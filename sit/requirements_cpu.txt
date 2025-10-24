@@ -1,0 +1,16 @@
+numpy==1.26.4
+procgen==0.10.7
+opencv-python<4.10
+tensorflow==2.16.2
+kornia
+higher
+gym==0.15.7
+scipy
+tqdm
+joblib
+cloudpickle
+click
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1
+pandas

@@ -1,0 +1,22 @@
+# Core deps from PyPI
+numpy==1.26.4
+procgen==0.10.7
+opencv-python<4.10
+tensorflow==2.16.2
+kornia
+higher
+gym==0.15.7
+scipy
+tqdm
+joblib
+cloudpickle
+click
+
+# Switch to the CUDA 12.4 PyTorch index for the next lines
+--index-url https://download.pytorch.org/whl/cu124
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1
+
+# Switch back to default PyPI
+--index-url https://pypi.org/simple
