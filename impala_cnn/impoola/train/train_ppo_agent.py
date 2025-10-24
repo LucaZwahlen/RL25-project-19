@@ -8,12 +8,11 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn as nn
-from tqdm import trange
-
 from impoola.eval.evaluation import (_get_game_range, _get_normalized_score,
                                      run_test_track, run_training_track)
 from impoola.prune.redo import run_redo
 from impoola.utils.utils import StopTimer
+from tqdm import trange
 
 
 def log_metrics_to_csv(csv_file, global_step, metrics_dict):
@@ -51,7 +50,7 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
     metrics_file = os.path.join(output_dir, "training_metrics.csv")
 
     # Calculate checkpoint intervals (every 10% of training)
-    checkpoint_intervals = [int(args.num_iterations * i / 10) for i in range(1, 10)]
+    checkpoint_intervals = [int(args.num_iterations * i / 100) for i in range(1, 100)]
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape, device=device)
@@ -74,10 +73,6 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
 
     from impoola.train.ppo_criterion import ppo_gae, ppo_loss
 
-    if args.compile_agent:
-        ppo_loss = torch.compile(ppo_loss, mode="reduce-overhead", fullgraph=True)
-        ppo_gae = torch.compile(ppo_gae, mode="reduce-overhead", fullgraph=True)
-
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     last_eval_step = -1  # Set to -1 to make sure to not evaluate at the very last step
@@ -93,18 +88,17 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
     next_done = torch.zeros(args.num_envs, device=device, dtype=torch.bool)
 
     # Initial dormant neurons
-    if not args.use_moe:
-        redo_dict = run_redo(next_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
+    redo_dict = run_redo(next_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
 
-        initial_metrics = {
-            "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
-            "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
-        }
+    initial_metrics = {
+        "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
+        "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
+    }
 
-        for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
-            initial_metrics[f"dormant_neurons/{i}_{k}"] = v
+    for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
+        initial_metrics[f"dormant_neurons/{i}_{k}"] = v
 
-        log_metrics_to_csv(metrics_file, global_step, initial_metrics)
+    log_metrics_to_csv(metrics_file, global_step, initial_metrics)
 
     if args.pruning_type != "Baseline":
         from impoola.maker.make_pruner import make_pruner
@@ -145,25 +139,14 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
             next_obs = torch.tensor(next_obs, device=device)
             next_done = torch.tensor(next_done, device=device, dtype=torch.bool)
 
-            if envs.env_type == "atari":
-                for idx, d in enumerate(next_done):
-                    if d and info["lives"][idx] == 0:
-                        avg_returns.append(info["r"][idx])
-                        episode_metrics = {
-                            f"charts{postfix}/episodic_return": info["r"][idx],
-                            f"charts{postfix}/avg_episodic_return": np.average(avg_returns),
-                            f"charts{postfix}/episodic_length": info["l"][idx],
-                        }
-                        # log_metrics_to_csv(metrics_file, global_step, episode_metrics)
-            else:
-                if "_episode" in info.keys():
-                    episode_metrics = {
-                        f"charts{postfix}/episodic_return": np.mean(info["episode"]["r"][info["_episode"]]),
-                        f"charts{postfix}/episodic_return_normalized": _get_normalized_score(
-                            info["episode"]["r"][info["_episode"]], game_range),
-                        f"charts{postfix}/episodic_length": np.mean(info["episode"]["l"][info["_episode"]]),
-                    }
-                    #  log_metrics_to_csv(metrics_file, global_step, episode_metrics)
+            if "_episode" in info.keys():
+                episode_metrics = {
+                    f"charts{postfix}/episodic_return": np.mean(info["episode"]["r"][info["_episode"]]),
+                    f"charts{postfix}/episodic_return_normalized": _get_normalized_score(
+                        info["episode"]["r"][info["_episode"]], game_range),
+                    f"charts{postfix}/episodic_length": np.mean(info["episode"]["l"][info["_episode"]]),
+                }
+                log_metrics_to_csv(metrics_file, global_step, episode_metrics)
 
         # flatten the batch
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
@@ -231,26 +214,23 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
             stop_timer.stop()
 
             # Estimate number of dormant neurons
-            if not args.use_moe:
-                redo_dict = run_redo(b_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
+            redo_dict = run_redo(b_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
 
-                dormant_metrics = {
-                    "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
-                    "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
-                }
+            dormant_metrics = {
+                "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
+                "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
+            }
 
-                for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
-                    dormant_metrics[f"dormant_neurons/{i}_{k}"] = v
+            for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
+                dormant_metrics[f"dormant_neurons/{i}_{k}"] = v
 
-                log_metrics_to_csv(metrics_file, global_step, dormant_metrics)
+            log_metrics_to_csv(metrics_file, global_step, dormant_metrics)
 
-            # Do not evaluate on Atari environments but show training progress
-            if envs.env_type != "atari":
-                eval_args = deepcopy(args)
-                eval_args.n_episodes_rollout = int(1e3)
-                run_training_track(agent, eval_args, global_step)
-                if args.env_track_setting == "generalization":
-                    run_test_track(agent, eval_args, global_step)
+            # eval
+            eval_args = deepcopy(args)
+            eval_args.n_episodes_rollout = int(1e3)
+            run_training_track(agent, eval_args, global_step)
+            run_test_track(agent, eval_args, global_step)
 
             last_eval_step = global_step
             stop_timer.start()

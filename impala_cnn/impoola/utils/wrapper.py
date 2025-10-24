@@ -2,8 +2,8 @@ import time
 from collections import deque
 from typing import Optional
 
-import numpy as np
 import gym
+import numpy as np
 
 
 class RecordEpisodeStatistics(gym.Wrapper):
@@ -26,13 +26,13 @@ class RecordEpisodeStatistics(gym.Wrapper):
         observations, rewards, terminateds, truncateds, infos = super().step(action)
         dones = np.logical_or(terminateds, truncateds)
 
-        self.episode_returns += infos["reward"] if self.atari else rewards
+        self.episode_returns += rewards
         self.episode_lengths += 1
         self.returned_episode_returns[:] = self.episode_returns
         self.returned_episode_lengths[:] = self.episode_lengths
 
-        self.episode_returns *= 1 - infos["terminated"] if self.atari else 1 - terminateds
-        self.episode_lengths *= 1 - infos["terminated"] if self.atari else 1 - terminateds
+        self.episode_returns *= 1 - terminateds
+        self.episode_lengths *= 1 - terminateds
         infos["r"] = self.returned_episode_returns
         infos["l"] = self.returned_episode_lengths
         return (
@@ -210,7 +210,6 @@ def add_vector_episode_statistics(
         info["episode"][k] = info_array
 
     return info
-
 
 
 # class NoisyPixelObservations(gym.ObservationWrapper):

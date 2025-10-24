@@ -1,7 +1,7 @@
 import torch.nn as nn
+from impoola.train.nn import (encoder_factory, layer_init_normed,
+                              layer_init_orthogonal)
 from torch.distributions.categorical import Categorical
-
-from impoola.train.nn import layer_init_orthogonal, layer_init_normed, encoder_factory
 
 
 class DQNAgent(nn.Module):
@@ -12,12 +12,6 @@ class DQNAgent(nn.Module):
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
             use_pooling_layer=False, pooling_layer_kernel_size=1,
-            use_dropout=False,
-            use_1d_conv=False,
-            use_depthwise_conv=False,
-            use_moe=False,
-            use_simba=False,
-            positional_encoding=False
     ):
         super().__init__()
 
@@ -28,12 +22,6 @@ class DQNAgent(nn.Module):
             width_scale=width_scale, out_features=out_features, cnn_filters=cnn_filters, activation=activation,
             use_layer_init_normed=use_layer_init_normed,
             use_pooling_layer=use_pooling_layer, pooling_layer_kernel_size=pooling_layer_kernel_size,
-            use_dropout=use_dropout,
-            use_1d_conv=use_1d_conv,
-            use_depthwise_conv=use_depthwise_conv,
-            use_moe=use_moe,
-            use_simba=use_simba,
-            positional_encoding=positional_encoding
         )
         self.encoder = encoder
         self.out_features = out_features
@@ -59,12 +47,7 @@ class ActorCriticAgent(nn.Module):
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
             use_pooling_layer=False, pooling_layer_kernel_size=1,
-            use_dropout=False,
-            use_1d_conv=False,
-            use_depthwise_conv=False,
-            use_moe=False,
-            use_simba=False,
-            positional_encoding=False
+
     ):
         super().__init__()
 
@@ -75,23 +58,18 @@ class ActorCriticAgent(nn.Module):
             width_scale=width_scale, out_features=out_features, cnn_filters=cnn_filters, activation=activation,
             use_layer_init_normed=use_layer_init_normed,
             use_pooling_layer=use_pooling_layer, pooling_layer_kernel_size=pooling_layer_kernel_size,
-            use_dropout=use_dropout,
-            use_1d_conv=use_1d_conv,
-            use_depthwise_conv=use_depthwise_conv,
-            use_moe=use_moe,
-            use_simba=use_simba,
-            positional_encoding=positional_encoding
+
         )
         self.encoder = encoder
         self.out_features = out_features
 
         # Actor head
-        actor = nn.Linear(out_features if not use_simba else cnn_filters[-1] * width_scale, envs.single_action_space.n)
+        actor = nn.Linear(out_features, envs.single_action_space.n)
         # self.actor = layer_init_normed(actor, norm_dim=1, scale=0.1) if use_layer_init_normed else actor
         self.actor = layer_init_orthogonal(actor, std=0.01)
 
         # Critic head
-        critic = nn.Linear(out_features if not use_simba else cnn_filters[-1] * width_scale, 1)
+        critic = nn.Linear(out_features, 1)
         # self.critic = layer_init_normed(critic, norm_dim=1, scale=0.1) if use_layer_init_normed else critic
         self.critic = layer_init_orthogonal(critic, std=1.0)
 
@@ -131,11 +109,9 @@ class PPGAgent(ActorCriticAgent):
     def __init__(self, envs, width_scale=1, out_features=256, chans=(16, 32, 32), activation='relu',
                  use_layer_init_normed=False, use_spectral_norm=False,
                  use_pooling_layer=False, pooling_layer_kernel_size=1,
-                 use_dropout=False,
-                 use_1d_conv=False,
-                 use_depthwise_conv=False):
+                 ):
         super().__init__(envs, width_scale, out_features, chans, activation, use_layer_init_normed, use_spectral_norm,
-                         use_pooling_layer, pooling_layer_kernel_size, use_dropout, use_1d_conv, use_depthwise_conv)
+                         use_pooling_layer, pooling_layer_kernel_size)
 
         # Aux critic head
         aux_critic = nn.Linear(out_features, 1)

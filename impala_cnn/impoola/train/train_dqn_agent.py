@@ -3,22 +3,24 @@ import time
 from collections import deque
 from copy import deepcopy
 
-import wandb
 import numpy as np
 import torch
-from tqdm import trange
 import torch.nn.functional as F
-from stable_baselines3.common.buffers import ReplayBuffer
-
-from impoola.utils.utils import StopTimer
-from impoola.utils.schedules import linear_schedule
-from impoola.eval.evaluation import run_test_track, run_training_track, _get_normalized_score, _get_game_range
+import wandb
+from impoola.eval.evaluation import (_get_game_range, _get_normalized_score,
+                                     run_test_track, run_training_track)
 from impoola.prune.redo import run_redo
+from impoola.utils.schedules import linear_schedule
+from impoola.utils.utils import StopTimer
+from stable_baselines3.common.buffers import ReplayBuffer
+from tqdm import trange
 
 
 def make_replay_buffer(args, envs, device):
     if args.prioritized_replay:
-        from impoola.utils.replay_buffer import SimplifiedPrioritizedMultiStepReplayBuffer as Buffer
+        from impoola.utils.replay_buffer import \
+            SimplifiedPrioritizedMultiStepReplayBuffer as Buffer
+
         # from impoola.utils.replay_buffer import PrioritizedMultiStepReplayBuffer as Buffer
         replay_buffer = Buffer(
             args.buffer_size,
@@ -36,7 +38,8 @@ def make_replay_buffer(args, envs, device):
         )
     else:
         if args.multi_step > 1:
-            from impoola.utils.replay_buffer import MultiStepReplayBuffer as Buffer
+            from impoola.utils.replay_buffer import \
+                MultiStepReplayBuffer as Buffer
             replay_buffer = Buffer(
                 args.buffer_size,
                 envs.single_observation_space_gymnasium,
@@ -183,25 +186,14 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
         bar.n = global_step
         bar.refresh()
 
-        if envs.env_type == "atari":
-            for idx, d in enumerate(next_done):
-                if d and info["lives"][idx] == 0:
-                    avg_returns.append(info["r"][idx])
-                    wandb.log({
-                        f"global_step": global_step,
-                        f"charts/episodic_return": info["r"][idx],
-                        f"charts/avg_episodic_return": np.average(avg_returns),
-                        f"charts/episodic_length": info["l"][idx],
-                    })
-        else:
-            if "_episode" in info.keys():
-                wandb.log({
-                    f"global_step": global_step,
-                    f"charts/episodic_return": np.mean(info["episode"]["r"][info["_episode"]]),
-                    f"charts/episodic_return_normalized": _get_normalized_score(
-                        info["episode"]["r"][info["_episode"]], game_range),
-                    f"charts/episodic_length": np.mean(info["episode"]["l"][info["_episode"]]),
-                })
+        if "_episode" in info.keys():
+            wandb.log({
+                f"global_step": global_step,
+                f"charts/episodic_return": np.mean(info["episode"]["r"][info["_episode"]]),
+                f"charts/episodic_return_normalized": _get_normalized_score(
+                    info["episode"]["r"][info["_episode"]], game_range),
+                f"charts/episodic_length": np.mean(info["episode"]["l"][info["_episode"]]),
+            })
 
         # ALGO LOGIC: training.
         if global_step > args.learning_starts:
@@ -271,13 +263,11 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
 
             # calc_translation_sensitivity(q_network, torch.tensor(obs[:32], device=device), device)
 
-            # Do not evaluate on Atari environments but show training progress
-            if envs.env_type != "atari":
-                eval_args = deepcopy(args)
-                eval_args.n_episodes_rollout = int(1e3)
-                run_training_track(q_network, eval_args, global_step)
-                if args.env_track_setting == "generalization":
-                    run_test_track(q_network, eval_args, global_step)
+            # eval
+            eval_args = deepcopy(args)
+            eval_args.n_episodes_rollout = int(1e3)
+            run_training_track(q_network, eval_args, global_step)
+            run_test_track(q_network, eval_args, global_step)
 
             last_eval_step = global_step
             stop_timer.start()

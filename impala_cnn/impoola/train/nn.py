@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from impoola.train.moe import ExpertModel, SoftMoE
 
 
@@ -57,31 +56,10 @@ def activation_factory(activation):
         raise NotImplementedError
 
 
-def encoder_factory(encoder_type, use_moe, *args, **kwargs):
+def encoder_factory(encoder_type, *args, **kwargs):
     if encoder_type == 'impala':
         model = ImpalaCNN(*args, **kwargs)
-        if use_moe:
-            # remove the linear head and only keep the CNN backbone
-            backbone = model.network[:-4]
-            assert backbone[-1].__class__ == ConvSequence
-
-            # import pdb; pdb.set_trace()
-
-            h = w = 1 if kwargs['use_pooling_layer'] else 8
-            token_length = kwargs['width_scale'] * kwargs['cnn_filters'][-1]
-            num_experts = 10
-            expert_hidden_size = kwargs['out_features']
-
-            model = SoftMoE(
-                module=ExpertModel,
-                backbone=backbone,
-                num_experts=num_experts, num_tokens=h * w, token_length=token_length,
-                expert_hidden_size=expert_hidden_size,
-                capacity_factor=1, expert_type="SMALL", normalization=False, use_random_phi=False
-            )
-            out_features = expert_hidden_size * h * w
-        else:
-            out_features = kwargs['out_features']
+        out_features = kwargs['out_features']
         return model, out_features
 
     elif encoder_type == 'nature':
@@ -144,8 +122,7 @@ class LinearResidualBlock(nn.Module):
 
 
 class ConvSequence(nn.Module):
-    def __init__(self, input_shape, out_channels, scale, use_layer_init_normed=False, activation='relu',
-                 positional_encoding=None):
+    def __init__(self, input_shape, out_channels, scale, use_layer_init_normed=False, activation='relu',):
         super().__init__()
         self._input_shape = input_shape
         self._out_channels = out_channels
@@ -158,11 +135,6 @@ class ConvSequence(nn.Module):
         self.conv = conv
 
         self.pooling = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        if positional_encoding == "after_max_pool":
-            self.pooling = nn.Sequential(self.pooling,
-                                         PositionalEncoding(input_shape[1] // 2, input_shape[2] // 2, out_channels))
-        elif positional_encoding == "before_max_pool":
-            self.pooling = nn.Sequential(PositionalEncoding(input_shape[1], input_shape[2], out_channels), self.pooling)
 
         # Residual blocks
         nblocks = 2
@@ -201,15 +173,8 @@ class ImpalaCNN(nn.Module):
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
             use_pooling_layer=False, pooling_layer_kernel_size=1,
-            use_dropout=False,
-            use_1d_conv=False,
-            use_depthwise_conv=False,
-            use_simba=False,
-            positional_encoding=None
     ):
         super().__init__()
-        self.use_simba = use_simba
-        self.simba_scale = 3
 
         shape = envs.single_observation_space.shape  # (c, h, w)
         scale = 1 / np.sqrt(len(cnn_filters))  # Not fully sure about the logic behind this but it's used in PPG code
@@ -218,18 +183,8 @@ class ImpalaCNN(nn.Module):
         cnn_layers = []
 
         for i_block, out_channels in enumerate(cnn_filters):
-            if positional_encoding == "last":
-                if i_block + 1 == len(cnn_filters):
-                    cnn_layers += [PositionalEncoding(shape[1], shape[2], shape[0])]
-            elif positional_encoding == "first":
-                if i_block == 0:
-                    cnn_layers += [PositionalEncoding(shape[1], shape[2], shape[0])]
-            elif positional_encoding == "all":
-                cnn_layers += [PositionalEncoding(shape[1], shape[2], shape[0])]
-
             conv_seq = ConvSequence(shape, int(out_channels * width_scale), scale=scale,
-                                    use_layer_init_normed=use_layer_init_normed, activation=activation,
-                                    positional_encoding=positional_encoding)
+                                    use_layer_init_normed=use_layer_init_normed, activation=activation)
 
             shape = conv_seq.get_output_shape()
             cnn_layers.append(conv_seq)
@@ -259,50 +214,30 @@ class ImpalaCNN(nn.Module):
                     # nn.AvgPool2d(kernel_size=6, stride=2, padding=0)
                 ]
 
-        if use_1d_conv:
-            cnn_layers += [
-                nn.Conv1d(in_channels=shape[0], out_channels=shape[1] * shape[2], kernel_size=3, padding=1)
-            ]
-
-        if use_depthwise_conv:
-            cnn_layers += [
-                nn.Conv2d(in_channels=shape[0], out_channels=shape[0], kernel_size=shape[1], groups=shape[0], padding=0)
-            ]
-
         # Linear head
         linear_layers = cnn_layers
         linear_layers += [nn.Flatten()]
 
-        if use_dropout:
-            linear_layers += [nn.Dropout(0.1)]
-
-        if self.use_simba:
-            for _ in range(self.simba_scale):
-                linear_layers += [LinearResidualBlock(shape[0])]
-            # add layer norm at the end
-            # linear_layers += [nn.LayerNorm(shape[0])]
-            linear_layers += [activation_factory(activation)]
-        else:
-            # encodertop = nn.LazyLinear(out_features)  # in_features=shape[0] * shape[1] * shape[2]
-            if use_pooling_layer or use_1d_conv or use_depthwise_conv:
-                if pooling_layer_kernel_size == -1:
-                    in_features_encoder = shape[0] * 2 * 2 + shape[0] * 1 * 1
-                else:
-                    in_features_encoder = shape[0] * pooling_layer_kernel_size * pooling_layer_kernel_size
+        # encodertop = nn.LazyLinear(out_features)  # in_features=shape[0] * shape[1] * shape[2]
+        if use_pooling_layer:
+            if pooling_layer_kernel_size == -1:
+                in_features_encoder = shape[0] * 2 * 2 + shape[0] * 1 * 1
             else:
-                in_features_encoder = shape[0] * shape[1] * shape[2]
-            encodertop = nn.Linear(in_features_encoder, out_features=out_features)
+                in_features_encoder = shape[0] * pooling_layer_kernel_size * pooling_layer_kernel_size
+        else:
+            in_features_encoder = shape[0] * shape[1] * shape[2]
+        encodertop = nn.Linear(in_features_encoder, out_features=out_features)
 
-            # encodertop = layer_init_kaiming_uniform(encodertop)  # TODO: Orthogonal could be better
+        # encodertop = layer_init_kaiming_uniform(encodertop)  # TODO: Orthogonal could be better
 
-            # encodertop = nn.LazyLinear(out_features * 2)  # in_features=shape[0] * shape[1] * shape[2]
-            # encodertop = layer_init_normed(encodertop, norm_dim=1, scale=1.4) if use_layer_init_normed else encodertop
+        # encodertop = nn.LazyLinear(out_features * 2)  # in_features=shape[0] * shape[1] * shape[2]
+        # encodertop = layer_init_normed(encodertop, norm_dim=1, scale=1.4) if use_layer_init_normed else encodertop
 
-            linear_layers += [
-                # activation_factory(activation),
-                encodertop,
-                activation_factory(activation)
-            ]
+        linear_layers += [
+            # activation_factory(activation),
+            encodertop,
+            activation_factory(activation)
+        ]
         self.network = nn.Sequential(*linear_layers)
 
     def forward(self, x):
@@ -396,11 +331,6 @@ class NatureCNN(nn.Module):
     def __init__(self, envs, width_scale=1, out_features=256, cnn_filters=(32, 64, 64), activation='relu',
                  use_layer_init_normed=False,
                  use_pooling_layer=False, pooling_layer_kernel_size=1,
-                 use_dropout=False,
-                 use_1d_conv=False,
-                 use_depthwise_conv=False,
-                 use_simba=False,
-                 positional_encoding=None
                  ):
         super().__init__()
 
@@ -423,9 +353,6 @@ class NatureCNN(nn.Module):
                 nn.AdaptiveAvgPool2d((pooling_layer_kernel_size, pooling_layer_kernel_size)),
                 activation_factory(activation)  # TODO: Check order of activation
             ]
-
-        if use_dropout or use_1d_conv or use_depthwise_conv:
-            raise NotImplementedError
 
         layers += [
             nn.Flatten(),

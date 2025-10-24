@@ -2,24 +2,24 @@
 import os
 import random
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional
-from copy import deepcopy
 
-import wandb
-import tyro
 import gym
 import numpy as np
 import torch
 import torch.optim as optim
-
-from impoola.utils.utils import network_summary, save_agent_to_wandb, measure_latency_agent
-from impoola.maker.make_env import make_an_env
-from impoola.train.agents import DQNAgent
+import tyro
 from impoola.eval import evaluation
+from impoola.eval.normalized_score_lists import (progcen_easy_hns,
+                                                 progcen_hard_hns, progcen_hns)
+from impoola.maker.make_env import make_an_env
 from impoola.prune.redo import run_redo
+from impoola.train.agents import DQNAgent
 from impoola.train.train_dqn_agent import train_dqn_agent
-from impoola.eval.normalized_score_lists import progcen_easy_hns, progcen_hard_hns, progcen_hns
+from impoola.utils.utils import (measure_latency_agent, network_summary,
+                                 save_agent_to_wandb)
 
 
 @dataclass
@@ -45,7 +45,7 @@ class Args:
     """the track setting of the environment"""
     n_episodes_rollout: int = int(2.5e3)
     """the number of episodes to rollout for evaluation"""
-    training_eval_ratio: float = 0.1
+    training_eval_ratio: float = 0.01
     """the ratio of training evaluation"""
     deterministic_rollout: bool = True
     """if toggled, the rollout will be deterministic"""
@@ -184,7 +184,6 @@ if __name__ == "__main__":
     # Environment that will be used for training
     envs = make_an_env(args, seed=args.seed,
                        normalize_reward=args.normalize_reward,
-                       env_track_setting=args.env_track_setting,
                        full_distribution=False)
 
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
@@ -301,9 +300,6 @@ if __name__ == "__main__":
     })
     agent = agent.to(device)
     print(f"Zero fraction: {redo_dict['zero_fraction']:.2f} | Dormant fraction: {redo_dict['dormant_fraction']:.2f}")
-
-    if envs.env_type == "atari":
-        exit(0)
 
     # EVALUATION
     print("Running evaluation!")

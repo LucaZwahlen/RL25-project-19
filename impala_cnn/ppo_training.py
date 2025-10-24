@@ -13,7 +13,6 @@ import numpy as np
 import torch
 import torch.optim as optim
 import tyro
-
 from impoola.eval import evaluation
 from impoola.eval.normalized_score_lists import (progcen_easy_hns,
                                                  progcen_hard_hns, progcen_hns)
@@ -33,33 +32,17 @@ class Args:
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    cuda: bool = True
-    """if toggled, cuda will be enabled by default"""
-    track: bool = True
-    """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "impoola"
-    """the wandb's project name"""
-    wandb_entity: str = 'wandb_entity'
-    """the entity (team) of wandb's project"""
-    capture_video: bool = False
-    """whether to capture videos of the agent performances (check out `videos` folder)"""
-    env_track_setting: str = "generalization"
-    """the track setting of the environment"""
     n_episodes_rollout: int = int(2.5e3)
     """the number of episodes to rollout for evaluation"""
     deterministic_rollout: bool = False
     """if toggled, the evaluation will be deterministic"""
     training_eval_ratio: float = 0.1
     """the ratio of training evaluation"""
-    measure_latency: bool = False
-    """if toggled, the latency of the agent will be measured"""
-    compile_agent: bool = False
-    """if toggled, the agent will be compiled"""
     normalize_reward: bool = True
     """if toggled, the reward will be normalized"""
 
     # Algorithm specific arguments
-    env_id: str = "bigfish"
+    env_id: str = "fruitbot"
     """the track setting of the environment"""
     distribution_mode: str = "easy"
     """the distribution mode of the environment"""
@@ -115,22 +98,11 @@ class Args:
     """if toggled, the learning rate will be rescaled by the width scale of the network"""
 
     # Network improvements
-    positional_encoding: Optional[str] = None
-    """the positional encoding of the network"""
-    use_simba: bool = False
-    """if toggled, SimBA will be enabled"""
-    use_moe: bool = False
-    """if toggled, MoE will be enabled"""
-    use_pooling_layer: bool = False
+
+    use_pooling_layer: bool = True
     """if toggled, pooling layer will be enabled before the last linear layer"""
     pooling_layer_kernel_size: int = 1
     """the kernel size of the pooling layer"""
-    use_dropout: bool = False
-    """if toggled, dropout will be enabled"""
-    use_1d_conv: bool = False
-    """if toggled, 1D convolution will be enabled"""
-    use_depthwise_conv: bool = False
-    """if toggled, depthwise convolution will be enabled"""
 
     # ReDo settings
     redo_tau: float = 0.025
@@ -208,20 +180,17 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    if args.cuda:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+
+    if device.type == 'cuda':
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
-
-    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
-    print(f"Device: {device}")
 
     # Environment that will be used for training
     envs = make_an_env(args, seed=args.seed,
                        normalize_reward=args.normalize_reward,
-                       env_track_setting=args.env_track_setting,
                        full_distribution=False)
-
-    is_atari = envs.env_type == "atari"
 
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -232,12 +201,7 @@ if __name__ == "__main__":
         activation=args.activation,
         use_layer_init_normed=False,
         use_pooling_layer=args.use_pooling_layer, pooling_layer_kernel_size=args.pooling_layer_kernel_size,
-        use_dropout=args.use_dropout,
-        use_1d_conv=args.use_1d_conv,
-        use_depthwise_conv=args.use_depthwise_conv,
-        use_moe=args.use_moe,
-        use_simba=args.use_simba,
-        positional_encoding=args.positional_encoding
+
     ).to(device)
 
     with torch.no_grad():
@@ -247,21 +211,7 @@ if __name__ == "__main__":
         agent.get_action_and_value(example_input)
 
     # print summary of net
-    if args.use_moe:
-        agent.encoder.fast_forward = False
     statistics, total_params, m_macs, param_bytes = network_summary(agent, example_input, device)
-    if args.use_moe:
-        agent.encoder.fast_forward = True
-
-    # compile the model using torch
-    if args.compile_agent:
-        agent = torch.compile(agent, mode="reduce-overhead", fullgraph=True)
-
-    # benchmark the model
-    latency_256, latency_1 = None, None
-    if args.cuda and args.measure_latency:
-        latency_256, latency_1 = measure_latency_agent(agent, envs, device)
-        print(f"Latency for a batch of 256 / 1: {latency_256:.2f} ms / {latency_1:.2f} ms")
 
     # Log initial metrics
     initial_metrics = {
@@ -269,11 +219,6 @@ if __name__ == "__main__":
         "total_network_m_macs": m_macs,
         "total_network_param_bytes": param_bytes,
     }
-    if latency_256 is not None:
-        initial_metrics.update({
-            "latency_256": latency_256,
-            "latency_1": latency_1,
-        })
 
     log_metrics(metrics_file, 0, initial_metrics)
 
@@ -309,44 +254,34 @@ if __name__ == "__main__":
     envs.close()
 
     # ANALYSIS OF THE FINAL MODEL
-    if not args.use_moe:
-        # Check how much GPU memory is used. If less than 5 GB are available, run the redo algorithm on the CPU
-        if torch.cuda.get_device_properties(0).total_memory < 5e9:
-            agent = agent.to('cpu')
-            b_obs = b_obs.to('cpu')
-        redo_dict = run_redo(b_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
+    redo_dict = run_redo(b_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
 
-        # Log dormant neuron analysis
-        dormant_metrics = {
-            "zero_fraction": redo_dict['zero_fraction'],
-            "dormant_fraction": redo_dict['dormant_fraction'],
-        }
-        for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
-            dormant_metrics[f"dormant_neurons_{i}_{k}"] = v
+    # Log dormant neuron analysis
+    dormant_metrics = {
+        "zero_fraction": redo_dict['zero_fraction'],
+        "dormant_fraction": redo_dict['dormant_fraction'],
+    }
+    for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
+        dormant_metrics[f"dormant_neurons_{i}_{k}"] = v
 
-        log_metrics(metrics_file, global_step, dormant_metrics)
+    log_metrics(metrics_file, global_step, dormant_metrics)
 
-        agent = agent.to(device)
-        print(f"Zero fraction: {redo_dict['zero_fraction']:.2f} | Dormant fraction: {redo_dict['dormant_fraction']:.2f}")
+    agent = agent.to(device)
+    print(f"Zero fraction: {redo_dict['zero_fraction']:.2f} | Dormant fraction: {redo_dict['dormant_fraction']:.2f}")
 
     # Save config file
     config_path = os.path.join(output_dir, "config.json")
     with open(config_path, 'w') as f:
         json.dump(vars(args), f, indent=2)
 
-    if is_atari:
-        print(f"Training complete! All files saved to: {output_dir}")
-        exit(0)
-
     # EVALUATION
     print("Running evaluation!")
     eval_args = deepcopy(args)
 
     # EVALUATION TRACK (1): In-distribution generalization only for generalization track
-    if args.env_track_setting == "generalization":
-        evaluation.run_training_track(agent, eval_args, global_step)
-        # Save checkpoint after evaluation
-        save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, "checkpoint_after_training_eval")
+    evaluation.run_training_track(agent, eval_args, global_step)
+    # Save checkpoint after evaluation
+    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, "checkpoint_after_training_eval")
 
     # EVALUATION TRACK (2): Out-of-distribution generalization for full distribution
     evaluation.run_test_track(agent, eval_args, global_step)

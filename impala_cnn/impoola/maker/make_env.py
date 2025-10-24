@@ -1,31 +1,10 @@
 # import envpool
-import numpy as np
-from procgen.env import ProcgenGym3Env, ToBaselinesVecEnv
 import gym
-from gym3 import ViewerWrapper
 import gymnasium
-
+import numpy as np
+from gym3 import ViewerWrapper
 from impoola.eval.normalized_score_lists import progcen_hns
-
-
-atari_games_list = [
-    "MsPacman-v5",
-    "Pong-v5",
-    "Qbert-v5",
-    "Assault-v5",
-    "Asterix-v5",
-    "BeamRider-v5",
-    "Boxing-v5",
-    "Breakout-v5",
-    "CrazyClimber-v5",
-    "DemonAttack-v5",
-    "Enduro-v5",
-    "FishingDerby-v5",
-    "SpaceInvaders-v5",
-    "Tutankham-v5",
-    "VideoPinball-v5",
-    "Seaquest-v5"
-]
+from procgen.env import ProcgenGym3Env, ToBaselinesVecEnv
 
 procgen_games_easy_list = [
     "BigfishEasy-v0",
@@ -89,7 +68,7 @@ class ProcgenToGymNewAPI(gym.Wrapper):
         return ob, reward, terminated, truncated, dict_info
 
 
-def _make_procgen_env(num_envs, env_id, env_track, num_levels, rand_seed, render=False, distribution_mode="easy"):
+def _make_procgen_env(num_envs, env_id, num_levels, rand_seed, render=False, distribution_mode="easy"):
     # print(f"Using track: {env_track} (num_levels: {num_levels})")
 
     # if distribution_mode != "easy" and env_id not in ["coinrun", "ninja", "climber", "fruitbot", "caveflyer"]:
@@ -99,7 +78,7 @@ def _make_procgen_env(num_envs, env_id, env_track, num_levels, rand_seed, render
         num=num_envs,
         env_name=env_id,
         num_levels=num_levels,
-        start_level=(201 if distribution_mode == "easy" else 501) if env_track == "fine_tuning" else 0,
+        start_level=0,
         # Note: Start_level has no influence when num_levels=0
         distribution_mode=distribution_mode,
         rand_seed=rand_seed,
@@ -115,36 +94,23 @@ def _make_procgen_env(num_envs, env_id, env_track, num_levels, rand_seed, render
     envs.single_observation_space = type(envs.observation_space["rgb"])(low=0, high=255, shape=(3, 64, 64),
                                                                         dtype=np.uint8)
     # TODO: Fix that only gym is used!
-    envs.single_observation_space_gymnasium = gymnasium.spaces.Box(low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
-    envs.single_action_space_gymnasium = gymnasium.spaces.Discrete(envs.single_action_space.n)
+    envs.single_observation_space_gymnasium = gym.spaces.Box(low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
+    envs.single_action_space_gymnasium = gym.spaces.Discrete(envs.single_action_space.n)
 
     envs.is_vector_env = True
     envs.env_type = 'procgen'
     return envs
 
 
-def make_procgen_env(args, env_track, full_distribution=False, normalize_reward=False, rand_seed=None, render=False,
+def make_procgen_env(args, full_distribution=False, normalize_reward=False, rand_seed=None, render=False,
                      distribution_mode="easy"):
     # Num levels is 200 for easy games and 1000 for hard games when running in general track
-    if env_track == "generalization":
-        num_levels = 200 if distribution_mode == "easy" else 500
-    elif env_track == "efficiency":
-        num_levels = 0
-    elif env_track == "fine_tuning":
-        num_levels = 100
-    else:
-        raise ValueError(f"Invalid env_track: {env_track}")
-
-    if full_distribution and env_track == "fine_tuning":
-        raise ValueError("Cannot use full distribution in fine tuning track")
+    num_levels = 200 if distribution_mode == "easy" else 500
 
     num_levels = 0 if full_distribution else num_levels
-    envs = _make_procgen_env(args.num_envs, args.env_id, env_track, num_levels, rand_seed, render, distribution_mode)
+    envs = _make_procgen_env(args.num_envs, args.env_id, num_levels, rand_seed, render, distribution_mode)
 
     envs = gym.wrappers.RecordEpisodeStatistics(envs)
-    if args.capture_video:
-        run_name = f"{args.env_id}_{args.seed}"
-        envs = gym.wrappers.RecordVideo(envs, f"videos/{run_name}")
 
     if normalize_reward:
         envs = gym.wrappers.NormalizeReward(envs, gamma=args.gamma)
@@ -206,19 +172,10 @@ class RecordEpisodeStatistics2(gym.Wrapper):
         )
 
 
-def make_an_env(args, seed, normalize_reward, env_track_setting="generalization", full_distribution=False):
-    if args.env_id in atari_games_list:
-        envs = make_atari_env(
-            args,
-            env_id=args.env_id,
-            num_envs=args.num_envs,
-            seed=seed,
-            normalize_reward=normalize_reward
-        )
-    elif args.env_id in progcen_hns.keys():
+def make_an_env(args, seed, normalize_reward, full_distribution=False):
+    if args.env_id in progcen_hns.keys():
         envs = make_procgen_env(
             args,
-            env_track_setting,
             full_distribution=full_distribution,
             normalize_reward=normalize_reward,
             rand_seed=seed,
@@ -227,77 +184,3 @@ def make_an_env(args, seed, normalize_reward, env_track_setting="generalization"
     else:
         raise ValueError(f"Unknown environment: {args.env_id}")
     return envs
-
-
-def make_atari_env(args, env_id, num_envs, seed, normalize_reward=False):
-    import envpool
-    envs = envpool.make(
-        env_id,
-        env_type="gym",
-        num_envs=num_envs,
-        episodic_life=True,
-        reward_clip=True,
-        seed=seed,
-    )
-    envs.env_type = 'atari'
-
-    envs = EnvpoolToGymNewAPI(envs)
-    envs = RecordEpisodeStatistics2(envs)
-    # envs = gym.wrappers.RecordEpisodeStatistics(envs)
-    if args.capture_video:
-        run_name = f"{args.env_id}_{args.seed}"
-        envs = gym.wrappers.RecordVideo(envs, f"videos/{run_name}")
-
-    if normalize_reward:
-        envs = gym.wrappers.NormalizeReward(envs, gamma=args.gamma)
-        envs = gym.wrappers.TransformReward(envs, lambda reward: np.clip(reward, -10, 10))
-    return envs
-
-# def make_envpool_env(args, eval_mode=False):
-#     if args.env_id in atari_games_list:
-#         envs = envpool.make(
-#             args.env_id,
-#             env_type="gym",
-#             num_envs=args.num_envs,
-#             episodic_life=True,
-#             reward_clip=True,
-#             seed=args.seed,
-#         )
-#         print(f"Using atari env: {args.env_id}")
-#         envs = EpisodicLifeRecordEpisodeStatistics(envs)
-#         envs.env_type = 'atari'
-#         return envs
-#
-#     elif args.env_id in procgen_games_easy_list or args.env_id in procgen_games_hard_list:
-#         if not eval_mode:
-#             num_levels = 200 if args.env_id in procgen_games_easy_list else 500
-#             start_level = 0
-#         else:
-#             num_levels = 0
-#             start_level = 0
-#
-#         envs = envpool.make(
-#             args.env_id,
-#             env_type="gym",
-#             num_envs=args.num_envs,
-#             seed=args.seed,
-#             num_levels=num_levels,
-#             start_level=start_level,
-#             use_sequential_levels=False,
-#         )
-#         envs = EnvpoolToGymNewAPI(envs)
-#         envs = gym.wrappers.RecordEpisodeStatistics(envs)
-#         envs.env_type = 'procgen'
-#         print(f"Using procgen env: {args.env_id}")
-#     else:
-#         envs = envpool.make(
-#             args.env_id,
-#             env_type="gym",
-#             num_envs=args.num_envs,
-#             seed=args.seed,
-#         )
-#         envs.env_type = 'unknown'
-#         envs = RecordEpisodeStatistics(envs)
-#         print(f"Using unknown env: {args.env_id}")
-#
-#     return envs

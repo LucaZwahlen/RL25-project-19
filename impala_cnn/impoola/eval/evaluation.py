@@ -6,8 +6,7 @@ from collections import deque
 
 import numpy as np
 import torch
-
-from impoola.maker.make_env import atari_games_list, make_an_env, progcen_hns
+from impoola.maker.make_env import make_an_env, progcen_hns
 
 
 def log_evaluation_to_csv(metrics_file, global_step, metrics_dict):
@@ -46,18 +45,11 @@ def rollout(envs, agent, n_episodes=10000, noise_scale=None, deterministic=True)
             else:
                 next_obs = torch.tensor(next_obs, device=device, dtype=torch.float32)
 
-            if envs.env_type == "atari":
-                next_done = np.logical_or(terminated, truncated)
-                for idx, d in enumerate(next_done):
-                    if d and info["lives"][idx] == 0:
-                        eval_avg_return.append(info["r"][idx])
-                        eps_to_do_per_env[idx] -= 1
-            else:
-                if "_episode" in info.keys():
-                    for i in range(len(info["_episode"])):
-                        if info["_episode"][i] and eps_to_do_per_env[i] > 0:
-                            eval_avg_return.append(info["episode"]["r"][i])
-                            eps_to_do_per_env[i] -= 1
+            if "_episode" in info.keys():
+                for i in range(len(info["_episode"])):
+                    if info["_episode"][i] and eps_to_do_per_env[i] > 0:
+                        eval_avg_return.append(info["episode"]["r"][i])
+                        eps_to_do_per_env[i] -= 1
 
     agent.train()
     return eval_avg_return
@@ -76,8 +68,6 @@ def _get_game_range(env_id):
         if env_id in game_name:
             print(f"Game range: {game_range}")
             return game_range
-    if env_id in atari_games_list:
-        return None
     raise ValueError(f"Unknown environment: {env_id}")
 
 
@@ -105,7 +95,7 @@ def _evaluate_and_log_results(env_id, eval_avg_return, global_step, prefix, post
 def run_training_track(agent, args, global_step=None, postfix=""):
     print("\nEvaluation: Training Track")
     envs = make_an_env(args, seed=args.seed, normalize_reward=False,
-                       env_track_setting=args.env_track_setting, full_distribution=False)
+                       full_distribution=False)
 
     eval_avg_return = rollout(envs, agent, args.n_episodes_rollout, deterministic=args.deterministic_rollout)
     envs.close()
@@ -117,7 +107,7 @@ def run_training_track(agent, args, global_step=None, postfix=""):
 def run_test_track(agent, args, global_step=None, postfix=""):
     print("\nEvaluation: Test Track")
     envs = make_an_env(args, seed=args.seed, normalize_reward=False,
-                       env_track_setting=args.env_track_setting, full_distribution=True)
+                       full_distribution=True)
 
     eval_avg_return_test = rollout(envs, agent, args.n_episodes_rollout, deterministic=args.deterministic_rollout)
     envs.close()
@@ -133,21 +123,8 @@ def run_noise_robustness_track(agent, args, noise_scales=(5, 15, 30), global_ste
 
     for noise_scale in noise_scales:
         envs = make_an_env(args, seed=args.seed, normalize_reward=False,
-                           env_track_setting=args.env_track_setting, full_distribution=True)
+                           full_distribution=True)
 
         eval_avg_return_noise = rollout(envs, agent, args.n_episodes_rollout, noise_scale, deterministic=args.deterministic_rollout)
         envs.close()
         _evaluate_and_log_results(args.env_id, eval_avg_return_noise, global_step, f"noise_{noise_scale}", postfix, output_dir)
-
-
-def run_fine_tuning_track(agent, args, global_step=None, before=False, postfix="", distribution_mode="easy"):
-    print(f"\nEvaluation: Fine Tuning Track {'(Before)' if before else ''}")
-    envs = make_an_env(args, seed=args.seed, normalize_reward=False,
-                       env_track_setting="fine_tuning", full_distribution=False)
-
-    eval_avg_return_fine_tuning = rollout(envs, agent, args.n_episodes_rollout, deterministic=args.deterministic_rollout)
-    envs.close()
-
-    prefix = "fine_tuning" + ("_before" if before else "")
-    output_dir = getattr(args, 'output_dir', None)
-    _evaluate_and_log_results(args.env_id, eval_avg_return_fine_tuning, global_step, prefix, postfix, output_dir)
