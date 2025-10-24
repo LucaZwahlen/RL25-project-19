@@ -11,7 +11,7 @@ class DQNAgent(nn.Module):
             envs,
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
-            use_pooling_layer=False, pooling_layer_kernel_size=1,
+
     ):
         super().__init__()
 
@@ -21,7 +21,7 @@ class DQNAgent(nn.Module):
             envs=envs,
             width_scale=width_scale, out_features=out_features, cnn_filters=cnn_filters, activation=activation,
             use_layer_init_normed=use_layer_init_normed,
-            use_pooling_layer=use_pooling_layer, pooling_layer_kernel_size=pooling_layer_kernel_size,
+
         )
         self.encoder = encoder
         self.out_features = out_features
@@ -46,7 +46,7 @@ class ActorCriticAgent(nn.Module):
             envs,
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
-            use_pooling_layer=False, pooling_layer_kernel_size=1,
+
 
     ):
         super().__init__()
@@ -57,8 +57,6 @@ class ActorCriticAgent(nn.Module):
             envs=envs,
             width_scale=width_scale, out_features=out_features, cnn_filters=cnn_filters, activation=activation,
             use_layer_init_normed=use_layer_init_normed,
-            use_pooling_layer=use_pooling_layer, pooling_layer_kernel_size=pooling_layer_kernel_size,
-
         )
         self.encoder = encoder
         self.out_features = out_features
@@ -107,11 +105,9 @@ class PPOAgent(ActorCriticAgent):
 class PPGAgent(ActorCriticAgent):
 
     def __init__(self, envs, width_scale=1, out_features=256, chans=(16, 32, 32), activation='relu',
-                 use_layer_init_normed=False, use_spectral_norm=False,
-                 use_pooling_layer=False, pooling_layer_kernel_size=1,
+                 use_layer_init_normed=False, use_spectral_norm=False
                  ):
-        super().__init__(envs, width_scale, out_features, chans, activation, use_layer_init_normed, use_spectral_norm,
-                         use_pooling_layer, pooling_layer_kernel_size)
+        super().__init__(envs, width_scale, out_features, chans, activation, use_layer_init_normed, use_spectral_norm)
 
         # Aux critic head
         aux_critic = nn.Linear(out_features, 1)

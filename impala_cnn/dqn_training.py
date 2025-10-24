@@ -104,12 +104,6 @@ class Args:
     rescale_lr_by_scale: bool = True
     """if toggled, the learning rate will be rescaled by the width scale of the network"""
 
-    # Network improvements
-    use_pooling_layer: bool = False
-    """if toggled, pooling layer will be enabled before the last linear layer"""
-    pooling_layer_kernel_size: int = 1
-    """the kernel size of the pooling layer"""
-
     # ReDo settings
     redo_tau: float = 0.025
     """the tau for the ReDo algorithm"""
@@ -197,7 +191,7 @@ if __name__ == "__main__":
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
-        use_pooling_layer=args.use_pooling_layer, pooling_layer_kernel_size=args.pooling_layer_kernel_size
+
     ).to(device)
 
     target_network = DQNAgent(
@@ -206,7 +200,7 @@ if __name__ == "__main__":
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
-        use_pooling_layer=args.use_pooling_layer, pooling_layer_kernel_size=args.pooling_layer_kernel_size
+
     ).to(device)
 
     with torch.no_grad():

@@ -172,7 +172,7 @@ class ImpalaCNN(nn.Module):
             self, envs,
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
-            use_pooling_layer=False, pooling_layer_kernel_size=1,
+
     ):
         super().__init__()
 
@@ -193,39 +193,16 @@ class ImpalaCNN(nn.Module):
         cnn_layers += [activation_factory(activation)]
 
         # ImpoolaCNN improves the original IMPALA CNN by adding a pooling layer
-        if use_pooling_layer:
-            if pooling_layer_kernel_size == -1:
-                # use the stacked approach where gap and (2, 2) pooling are used at the same time
-                cnn_layers += [
-                    StackedAdaptiveAvgPool2d()
-                ]
-            else:
-                cnn_layers += [
-                    nn.AdaptiveAvgPool2d((pooling_layer_kernel_size, pooling_layer_kernel_size))
-
-                    # do sum pooling instead of avg pooling
-                    # GlobalSumPool2d()
-                    # GlobalFeatureAvgPool2d()
-
-                    # TODO!!!! JUST FOR TESTING!!!!!!!!!!!!!
-                    # nn.AdaptiveMaxPool2d((pooling_layer_kernel_size, pooling_layer_kernel_size))
-                    # given the output shape, calculate an average pooling layer that reduces to 2x2 with some overlap
-                    # nn.AvgPool2d(kernel_size=5, stride=4, padding=2)
-                    # nn.AvgPool2d(kernel_size=6, stride=2, padding=0)
-                ]
+        cnn_layers += [nn.AdaptiveAvgPool2d((1, 1))]
 
         # Linear head
         linear_layers = cnn_layers
         linear_layers += [nn.Flatten()]
 
         # encodertop = nn.LazyLinear(out_features)  # in_features=shape[0] * shape[1] * shape[2]
-        if use_pooling_layer:
-            if pooling_layer_kernel_size == -1:
-                in_features_encoder = shape[0] * 2 * 2 + shape[0] * 1 * 1
-            else:
-                in_features_encoder = shape[0] * pooling_layer_kernel_size * pooling_layer_kernel_size
-        else:
-            in_features_encoder = shape[0] * shape[1] * shape[2]
+
+        in_features_encoder = shape[0] * 1 * 1  # after adaptive avg pooling to (1,1)
+
         encodertop = nn.Linear(in_features_encoder, out_features=out_features)
 
         # encodertop = layer_init_kaiming_uniform(encodertop)  # TODO: Orthogonal could be better
@@ -330,7 +307,7 @@ class PositionalEncoding(nn.Module):
 class NatureCNN(nn.Module):
     def __init__(self, envs, width_scale=1, out_features=256, cnn_filters=(32, 64, 64), activation='relu',
                  use_layer_init_normed=False,
-                 use_pooling_layer=False, pooling_layer_kernel_size=1,
+
                  ):
         super().__init__()
 
@@ -347,12 +324,11 @@ class NatureCNN(nn.Module):
             activation_factory(activation)
         ]
 
-        if use_pooling_layer:
-            layers = layers[:-1]
-            layers += [
-                nn.AdaptiveAvgPool2d((pooling_layer_kernel_size, pooling_layer_kernel_size)),
-                activation_factory(activation)  # TODO: Check order of activation
-            ]
+        layers = layers[:-1]
+        layers += [
+            nn.AdaptiveAvgPool2d((1, 1)),
+            activation_factory(activation)  # TODO: Check order of activation
+        ]
 
         layers += [
             nn.Flatten(),
