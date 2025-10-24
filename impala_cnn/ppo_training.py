@@ -19,7 +19,7 @@ from impoola.eval.normalized_score_lists import (progcen_easy_hns,
 from impoola.maker.make_env import make_an_env
 from impoola.prune.redo import run_redo
 from impoola.train.agents import PPOAgent
-from impoola.train.train_ppo_agent import train_ppo_agent
+from impoola.train.train_ppo_agent import log_metrics_to_csv, train_ppo_agent
 from impoola.utils.utils import measure_latency_agent, network_summary
 
 
@@ -112,6 +112,8 @@ class Args:
     """the mini-batch size (computed in runtime)"""
     num_iterations: int = 0
     """the number of iterations (computed in runtime)"""
+    log_interval: int = 1
+    """the logging interval for detailed metrics"""
 
 
 def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name):
@@ -129,14 +131,6 @@ def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, check
     return checkpoint_path
 
 
-def log_metrics(csv_file, global_step, metrics_dict):
-    """Log metrics to CSV file"""
-    with open(csv_file, 'a', newline='') as f:
-        writer = csv.writer(f)
-        for key, value in metrics_dict.items():
-            writer.writerow([global_step, key, value])
-
-
 if __name__ == "__main__":
 
     args = tyro.cli(Args)
@@ -152,11 +146,18 @@ if __name__ == "__main__":
     # Pass output_dir to args so train_ppo_agent can access it
     args.output_dir = output_dir
 
-    # Initialize CSV logging
+    # Initialize CSV logging with SIT-style headers
     metrics_file = os.path.join(output_dir, "training_metrics.csv")
+    sit_format_file = os.path.join(output_dir, "sit_format.csv")
+
     with open(metrics_file, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['global_step', 'metric', 'value'])
+
+    # Initialize SIT-style CSV with header comment
+    with open(sit_format_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['# action_loss,dist_entropy,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps'])
 
     global progcen_hns
     if args.distribution_mode == "easy":
@@ -168,6 +169,7 @@ if __name__ == "__main__":
 
     print(f"Run name: {run_name} | Batch size: {args.batch_size} | Num iterations: {args.num_iterations}")
     print(f"Outputs will be saved to: {output_dir}")
+    print(f"Using SIT-style logging: losses/action_loss, losses/dist_entropy, losses/value_loss, train/test performance every epoch")
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -207,14 +209,14 @@ if __name__ == "__main__":
     # print summary of net
     statistics, total_params, m_macs, param_bytes = network_summary(agent, example_input, device)
 
-    # Log initial metrics
+    # Log initial metrics using the new logging function
     initial_metrics = {
         "total_network_params": total_params,
         "total_network_m_macs": m_macs,
         "total_network_param_bytes": param_bytes,
     }
 
-    log_metrics(metrics_file, 0, initial_metrics)
+    log_metrics_to_csv(metrics_file, 0, initial_metrics)
 
     optimizer = optim.Adam(
         agent.parameters(),
@@ -233,7 +235,7 @@ if __name__ == "__main__":
     # Save initial checkpoint
     save_checkpoint(agent, optimizer, args, 0, envs, output_dir, "checkpoint_000_initial")
 
-    # TRAINING STEP
+    # TRAINING STEP - now logs SIT-style metrics every epoch
     envs, agent, global_step, b_obs = train_ppo_agent(args, envs, agent, optimizer, device)
 
     # Save statistics for reward normalization, will be used for fine-tuning on additional levels later
@@ -252,13 +254,13 @@ if __name__ == "__main__":
 
     # Log dormant neuron analysis
     dormant_metrics = {
-        "zero_fraction": redo_dict['zero_fraction'],
-        "dormant_fraction": redo_dict['dormant_fraction'],
+        "final/zero_fraction": redo_dict['zero_fraction'],
+        "final/dormant_fraction": redo_dict['dormant_fraction'],
     }
     for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
-        dormant_metrics[f"dormant_neurons_{i}_{k}"] = v
+        dormant_metrics[f"final/dormant_neurons_{i}_{k}"] = v
 
-    log_metrics(metrics_file, global_step, dormant_metrics)
+    log_metrics_to_csv(metrics_file, global_step, dormant_metrics)
 
     agent = agent.to(device)
     print(f"Zero fraction: {redo_dict['zero_fraction']:.2f} | Dormant fraction: {redo_dict['dormant_fraction']:.2f}")
@@ -268,8 +270,8 @@ if __name__ == "__main__":
     with open(config_path, 'w') as f:
         json.dump(vars(args), f, indent=2)
 
-    # EVALUATION
-    print("Running evaluation!")
+    # FINAL EVALUATION (additional to the epoch-by-epoch evaluation during training)
+    print("Running final detailed evaluation!")
     eval_args = deepcopy(args)
 
     # EVALUATION TRACK (1): In-distribution generalization only for generalization track
@@ -283,3 +285,4 @@ if __name__ == "__main__":
     save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, "checkpoint_after_test_eval")
 
     print(f"All training and evaluation complete! Files saved to: {output_dir}")
+    print(f"Training metrics logged in SIT format to: {metrics_file}")
