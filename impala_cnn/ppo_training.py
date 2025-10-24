@@ -157,8 +157,8 @@ if __name__ == "__main__":
     # Initialize SIT-style CSV with header comment
     with open(sit_format_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['# action_loss,dist_entropy,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps'])
-
+        writer.writerow(['losses/action_loss', 'losses/dist_entropy', 'losses/value_loss', 'test/mean_episode_reward', 'test/median_episode_reward',
+                        'train/mean_episode_reward', 'train/median_episode_reward', 'train/nupdates', 'train/total_num_steps'])
     global progcen_hns
     if args.distribution_mode == "easy":
         progcen_hns.update(progcen_easy_hns)

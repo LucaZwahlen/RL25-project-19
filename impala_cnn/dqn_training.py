@@ -149,10 +149,17 @@ if __name__ == "__main__":
 
     # Initialize CSV logging
     metrics_file = os.path.join(output_dir, "training_metrics.csv")
+    sit_format_file = os.path.join(output_dir, "sit_format.csv")
+
     with open(metrics_file, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['global_step', 'metric', 'value'])
 
+    # Initialize SIT-style CSV with header comment
+    with open(sit_format_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['losses/td_loss', 'losses/q_values', 'losses/value_loss', 'test/mean_episode_reward', 'test/median_episode_reward',
+                         'train/mean_episode_reward', 'train/median_episode_reward', 'train/nupdates', 'train/total_num_steps'])
     global progcen_hns
     if args.distribution_mode == "easy":
         progcen_hns.update(progcen_easy_hns)

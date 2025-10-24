@@ -25,6 +25,13 @@ def log_metrics_to_csv(csv_file, global_step, metrics_dict):
             writer.writerow([global_step, key, value])
 
 
+def log_sit_style_csv(csv_file, td_loss, q_values, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps):
+    """Log metrics to CSV file in exact SIT format: td_loss,q_values,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps"""
+    with open(csv_file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([td_loss, q_values, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps])
+
+
 def save_checkpoint_during_training(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name):
     """Save model checkpoint during training"""
     checkpoint_path = os.path.join(output_dir, f"{checkpoint_name}.pt")
@@ -88,14 +95,66 @@ def make_replay_buffer(args, envs, device):
     return replay_buffer
 
 
+def evaluate_test_performance(agent, args, device):
+    """Quick evaluation on test distribution - simplified version"""
+    from impoola.maker.make_env import make_an_env
+
+    try:
+        # Create test environment with full distribution
+        test_args = deepcopy(args)
+        test_args.num_envs = min(16, args.num_envs)  # Use fewer envs for faster eval
+
+        test_envs = make_an_env(test_args, seed=42, normalize_reward=False, full_distribution=True)
+
+        episode_rewards = []
+        num_episodes = 0
+        target_episodes = 32  # Quick evaluation with fewer episodes
+
+        obs, _ = test_envs.reset()
+        obs = torch.tensor(obs, device=device)
+
+        while num_episodes < target_episodes:
+            with torch.no_grad():
+                q_values = agent(obs)
+                actions = torch.argmax(q_values, dim=1).cpu().numpy()
+
+            obs, reward, terminated, truncated, info = test_envs.step(actions)
+            obs = torch.tensor(obs, device=device)
+
+            if "_episode" in info.keys():
+                completed_episodes = info["episode"]["r"][info["_episode"]]
+                episode_rewards.extend(completed_episodes)
+                num_episodes = len(episode_rewards)
+
+        test_envs.close()
+
+        if len(episode_rewards) == 0:
+            return 0.0, 0.0
+
+        return np.mean(episode_rewards), np.median(episode_rewards)
+
+    except Exception as e:
+        # Silently handle errors and return zeros
+        return 0.0, 0.0
+
+
 def train_dqn_agent(args, envs, agent, optimizer, device):
     """ Train the DQN agent """
     q_network, target_network = agent
     game_range = _get_game_range(args.env_id)
 
+    # Track training episode statistics
+    training_episode_rewards = deque(maxlen=100)
+
     # Setup CSV logging - assume output_dir and metrics_file are passed through args
     output_dir = getattr(args, 'output_dir', 'outputs')
     metrics_file = os.path.join(output_dir, "training_metrics.csv")
+
+    # Calculate checkpoint intervals (every 10% of training)
+    checkpoint_intervals = [int(args.total_timesteps * i / 10) for i in range(1, 10)]
+
+    # Track update count for SIT logging
+    update_count = 0
 
     if args.prioritized_replay:
         def unwrap_data(data):
@@ -211,7 +270,11 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
         bar.n = global_step
         bar.refresh()
 
+        # Collect training episode rewards for SIT logging
         if "_episode" in info.keys():
+            completed_episodes = info["episode"]["r"][info["_episode"]]
+            training_episode_rewards.extend(completed_episodes)
+
             episode_metrics = {
                 f"charts/episodic_return": np.mean(info["episode"]["r"][info["_episode"]]),
                 f"charts/episodic_return_normalized": _get_normalized_score(
@@ -237,6 +300,8 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
                         replay_buffer.update_priorities(replay_indices, td_error.detach().abs().cpu().numpy())
                         assert replay_weights.shape == td_error.shape, f"Replay_weights and td_error do not match"
 
+                    update_count += 1
+
                 training_metrics = {
                     f"losses/td_loss": loss,
                     f"losses/q_values": old_val.mean().item(),
@@ -246,6 +311,29 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
                 }
 
                 log_metrics_to_csv(metrics_file, global_step, training_metrics)
+
+                # SIT-style logging every N updates (like every epoch in PPO)
+                if update_count % 1000 == 0:  # Log every 1000 updates
+                    # Quick test evaluation (like SIT)
+                    test_mean, test_median = evaluate_test_performance(q_network, args, device)
+
+                    # Calculate training performance
+                    train_mean_reward = np.mean(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
+                    train_median_reward = np.median(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
+
+                    # Log in SIT format: td_loss,q_values,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps
+                    log_sit_style_csv(
+                        os.path.join(output_dir, "sit_format.csv"),
+                        loss.item(),  # td_loss (equivalent to action_loss)
+                        old_val.mean().item(),  # q_values (equivalent to dist_entropy)
+                        0.0,  # value_loss (not applicable for DQN, set to 0)
+                        test_mean,    # test_mean
+                        test_median,  # test_median
+                        train_mean_reward,  # train_mean
+                        train_median_reward,  # train_median
+                        update_count // 1000,  # nupdates (scaled down)
+                        global_step   # total_steps
+                    )
 
             # update target network
             if global_step % args.target_network_frequency == 0:
