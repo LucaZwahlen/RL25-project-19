@@ -25,11 +25,11 @@ def log_metrics_to_csv(csv_file, global_step, metrics_dict):
             writer.writerow([global_step, key, value])
 
 
-def log_sit_style_csv(csv_file, td_loss, q_values, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps):
-    """Log metrics to CSV file in exact SIT format: td_loss,q_values,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps"""
+def log_sit_style_csv(csv_file, td_loss, q_values, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps, training_time):
+    """Log metrics to CSV file in exact SIT format: td_loss,q_values,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps,training_time"""
     with open(csv_file, 'a', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow([td_loss, q_values, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps])
+        writer.writerow([td_loss, q_values, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps, training_time])
 
 
 def save_checkpoint_during_training(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name):
@@ -102,13 +102,13 @@ def evaluate_test_performance(agent, args, device):
     try:
         # Create test environment with full distribution
         test_args = deepcopy(args)
-        test_args.num_envs = min(16, args.num_envs)  # Use fewer envs for faster eval
+        test_args.num_envs = min(32, args.num_envs)  # Use more envs for better parallelization
 
         test_envs = make_an_env(test_args, seed=42, normalize_reward=False, full_distribution=True)
 
         episode_rewards = []
         num_episodes = 0
-        target_episodes = 32  # Quick evaluation with fewer episodes
+        target_episodes = 64  # Increased for more robust evaluation (~1 second)
 
         obs, _ = test_envs.reset()
         obs = torch.tensor(obs, device=device)
@@ -153,8 +153,10 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
     # Calculate checkpoint intervals (every 10% of training)
     checkpoint_intervals = [int(args.total_timesteps * i / 10) for i in range(1, 10)]
 
-    # Track update count for SIT logging
+    # Track update count for SIT logging and cumulative training time
     update_count = 0
+    cumulative_training_time = 0.0
+    training_start_time = time.time()
 
     if args.prioritized_replay:
         def unwrap_data(data):
@@ -314,14 +316,19 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
 
                 # SIT-style logging every N updates (like every epoch in PPO)
                 if update_count % 1000 == 0:  # Log every 1000 updates
-                    # Quick test evaluation (like SIT)
+                    # Get training time BEFORE test evaluation (excluding evaluation time)
+                    current_training_time = stop_timer.get_elapsed_time()
+
+                    # Quick test evaluation (like SIT) - EXCLUDE from training time
+                    stop_timer.stop()  # Pause training timer during evaluation
                     test_mean, test_median = evaluate_test_performance(q_network, args, device)
+                    stop_timer.start()  # Resume training timer after evaluation
 
                     # Calculate training performance
                     train_mean_reward = np.mean(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
                     train_median_reward = np.median(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
 
-                    # Log in SIT format: td_loss,q_values,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps
+                    # Log in SIT format using training time BEFORE evaluation
                     log_sit_style_csv(
                         os.path.join(output_dir, "sit_format.csv"),
                         loss.item(),  # td_loss (equivalent to action_loss)
@@ -332,7 +339,8 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
                         train_mean_reward,  # train_mean
                         train_median_reward,  # train_median
                         update_count // 1000,  # nupdates (scaled down)
-                        global_step   # total_steps
+                        global_step,   # total_steps
+                        current_training_time  # training_time (BEFORE test eval)
                     )
 
             # update target network

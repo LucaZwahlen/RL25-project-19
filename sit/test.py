@@ -1,19 +1,18 @@
 import numpy as np
 import torch
-from procgen import ProcgenEnv
-
 from baselines.common.vec_env.vec_monitor import VecMonitor
 from baselines.common.vec_env.vec_normalize import VecNormalize
 from baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
+from procgen import ProcgenEnv
 from ucb_rl2_meta.envs import VecPyTorchProcgen, VecPyTorchProcgenSmall
 
 
-def evaluate(args, actor_critic, device, num_processes=1, aug_id=None):
+def evaluate(args, actor_critic, device, num_processes=32, aug_id=None):  # Increased from 1 to 32
     actor_critic.eval()
 
     # Sample Levels From the Full Distribution
-    venv = ProcgenEnv(num_envs=num_processes, env_name=args.env_name, \
-                      num_levels=0, start_level=0, \
+    venv = ProcgenEnv(num_envs=num_processes, env_name=args.env_name,
+                      num_levels=0, start_level=0,
                       distribution_mode=args.distribution_mode)
     venv = VecExtractDictObs(venv, "rgb")
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
@@ -28,7 +27,7 @@ def evaluate(args, actor_critic, device, num_processes=1, aug_id=None):
         num_processes, actor_critic.recurrent_hidden_state_size, device=device)
     eval_masks = torch.ones(num_processes, 1, device=device)
 
-    while len(eval_episode_rewards) < 10:
+    while len(eval_episode_rewards) < 32:  # Increased from 10 to 32 episodes
         with torch.no_grad():
             if aug_id:
                 obs = aug_id(obs)
@@ -51,8 +50,8 @@ def evaluate(args, actor_critic, device, num_processes=1, aug_id=None):
 
     eval_envs.close()
 
-    print("Last {} test episodes: mean/median reward {:.1f}/{:.1f}\n" \
-          .format(len(eval_episode_rewards), \
+    print("Last {} test episodes: mean/median reward {:.1f}/{:.1f}\n"
+          .format(len(eval_episode_rewards),
                   np.mean(eval_episode_rewards), np.median(eval_episode_rewards)))
 
     return eval_episode_rewards

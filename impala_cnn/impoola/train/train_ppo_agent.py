@@ -23,11 +23,11 @@ def log_metrics_to_csv(csv_file, global_step, metrics_dict):
             writer.writerow([global_step, key, value])
 
 
-def log_sit_style_csv(csv_file, action_loss, dist_entropy, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps):
-    """Log metrics to CSV file in exact SIT format: action_loss,dist_entropy,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps"""
+def log_sit_style_csv(csv_file, action_loss, dist_entropy, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps, training_time):
+    """Log metrics to CSV file in exact SIT format: action_loss,dist_entropy,value_loss,test_mean,test_median,train_mean,train_median,nupdates,total_steps,training_time"""
     with open(csv_file, 'a', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow([action_loss, dist_entropy, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps])
+        writer.writerow([action_loss, dist_entropy, value_loss, test_mean, test_median, train_mean, train_median, nupdates, total_steps, training_time])
 
 
 def save_checkpoint_during_training(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name):
@@ -52,13 +52,13 @@ def evaluate_test_performance(agent, args, device):
     try:
         # Create test environment with full distribution
         test_args = deepcopy(args)
-        test_args.num_envs = min(16, args.num_envs)  # Use fewer envs for faster eval
+        test_args.num_envs = min(32, args.num_envs)  # Use more envs for better parallelization
 
         test_envs = make_an_env(test_args, seed=42, normalize_reward=False, full_distribution=True)
 
         episode_rewards = []
         num_episodes = 0
-        target_episodes = 32  # Quick evaluation with fewer episodes
+        target_episodes = 64  # Increased from 32 for more robust evaluation (~1 second)
 
         obs, _ = test_envs.reset()
         obs = torch.tensor(obs, device=device)
@@ -127,6 +127,10 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     pruning_steps_done = 0
+
+    # Initialize cumulative training timer (excluding evaluation time)
+    cumulative_training_time = 0.0
+    iteration_start_time = time.time()
 
     stop_timer = StopTimer()
     stop_timer.start()
@@ -276,8 +280,16 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
                 "train/median_episode_reward": np.median(training_episode_rewards),
             })
 
-        # Quick test evaluation every epoch (like SIT) - silently handle errors
+        # Update cumulative training time (excluding this iteration's quick test eval)
+        iteration_end_time = time.time()
+        cumulative_training_time += (iteration_end_time - iteration_start_time)
+
+        # Quick test evaluation every epoch (like SIT) - silently handle errors and EXCLUDE from training time
+        eval_start_time = time.time()
         test_mean, test_median = evaluate_test_performance(agent, args, device)
+        eval_end_time = time.time()
+        # Note: We don't add eval time to cumulative_training_time
+
         epoch_metrics.update({
             "test/mean_episode_reward": test_mean,
             "test/median_episode_reward": test_median,
@@ -316,8 +328,12 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
             train_mean_reward,  # train_mean
             train_median_reward,  # train_median
             iteration,        # nupdates
-            global_step       # total_steps
+            global_step,      # total_steps
+            cumulative_training_time  # training_time (cumulative, excluding evaluations)
         )
+
+        # Start timing next iteration (after evaluation is complete)
+        iteration_start_time = time.time()
 
         # Print progress (similar to SIT format) - only occasionally to reduce noise
         if iteration % max(1, args.num_iterations // 20) == 0:

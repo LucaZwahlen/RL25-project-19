@@ -158,7 +158,7 @@ if __name__ == "__main__":
     with open(sit_format_file, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['losses/action_loss', 'losses/dist_entropy', 'losses/value_loss', 'test/mean_episode_reward', 'test/median_episode_reward',
-                        'train/mean_episode_reward', 'train/median_episode_reward', 'train/nupdates', 'train/total_num_steps'])
+                         'train/mean_episode_reward', 'train/median_episode_reward', 'train/nupdates', 'train/total_num_steps', 'train/total_time'])
     global progcen_hns
     if args.distribution_mode == "easy":
         progcen_hns.update(progcen_easy_hns)

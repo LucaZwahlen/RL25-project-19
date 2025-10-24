@@ -4,15 +4,14 @@ import timeit
 from collections import deque
 from test import evaluate
 
+import data_augs
 import numpy as np
 import torch
-from procgen import ProcgenEnv
-
-import data_augs
 from baselines import logger
 from baselines.common.vec_env.vec_monitor import VecMonitor
 from baselines.common.vec_env.vec_normalize import VecNormalize
 from baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
+from procgen import ProcgenEnv
 from ucb_rl2_meta import algo, utils
 from ucb_rl2_meta.algo.drac import DrAC
 from ucb_rl2_meta.arguments import parser
@@ -258,6 +257,10 @@ def train(args):
     num_updates = int(
         args.num_env_steps) // args.num_steps // args.num_processes
 
+    # Initialize cumulative training timer (excluding evaluation time) - same as PPO
+    cumulative_training_time = 0.0
+    iteration_start_time = time.time()
+
     for j in range(init_epoch, num_updates):
         # get current milliseconds
         start_time_ms = time.perf_counter() * 1000
@@ -301,6 +304,10 @@ def train(args):
         value_loss, action_loss, dist_entropy = agent.update(rollouts)
         rollouts.after_update()
 
+        # Update cumulative training time (excluding evaluation time)
+        iteration_end_time = time.time()
+        cumulative_training_time += (iteration_end_time - iteration_start_time)
+
         # save for every interval-th episode or for the last epoch
         total_num_steps = (j + 1) * args.num_processes * args.num_steps
         if j % args.log_interval == 0 and len(episode_rewards) > 1:
@@ -321,13 +328,22 @@ def train(args):
             logger.logkv("train/mean_episode_reward", np.mean(episode_rewards))
             logger.logkv("train/median_episode_reward", np.median(episode_rewards))
 
-            ### Eval on the Full Distribution of Levels ###
+            ### Eval on the Full Distribution of Levels - EXCLUDE from training time ###
+            eval_start_time = time.time()
             eval_episode_rewards = evaluate(args, actor_critic, device, aug_id=aug_id)
+            eval_end_time = time.time()
+            # Note: We don't add eval time to cumulative_training_time
 
             logger.logkv("test/mean_episode_reward", np.mean(eval_episode_rewards))
             logger.logkv("test/median_episode_reward", np.median(eval_episode_rewards))
 
+            # Add training time to the logged metrics
+            logger.logkv("train/training_time", cumulative_training_time)
+
             logger.dumpkvs()
+
+        # Start timing next iteration (after any potential evaluation)
+        iteration_start_time = time.time()
 
         # Save Model
         if (j > 0 and j % args.save_interval == 0
