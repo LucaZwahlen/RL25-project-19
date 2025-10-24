@@ -94,8 +94,8 @@ def _make_procgen_env(num_envs, env_id, num_levels, rand_seed, render=False, dis
     envs.single_observation_space = type(envs.observation_space["rgb"])(low=0, high=255, shape=(3, 64, 64),
                                                                         dtype=np.uint8)
     # TODO: Fix that only gym is used!
-    envs.single_observation_space_gymnasium = gym.spaces.Box(low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
-    envs.single_action_space_gymnasium = gym.spaces.Discrete(envs.single_action_space.n)
+    envs.single_observation_space_gymnasium = gymnasium.spaces.Box(low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
+    envs.single_action_space_gymnasium = gymnasium.spaces.Discrete(envs.single_action_space.n)
 
     envs.is_vector_env = True
     envs.env_type = 'procgen'

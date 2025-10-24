@@ -1,3 +1,5 @@
+import csv
+import os
 import random
 import time
 from collections import deque
@@ -6,7 +8,6 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn.functional as F
-import wandb
 from impoola.eval.evaluation import (_get_game_range, _get_normalized_score,
                                      run_test_track, run_training_track)
 from impoola.prune.redo import run_redo
@@ -14,6 +15,29 @@ from impoola.utils.schedules import linear_schedule
 from impoola.utils.utils import StopTimer
 from stable_baselines3.common.buffers import ReplayBuffer
 from tqdm import trange
+
+
+def log_metrics_to_csv(csv_file, global_step, metrics_dict):
+    """Log metrics to CSV file"""
+    with open(csv_file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        for key, value in metrics_dict.items():
+            writer.writerow([global_step, key, value])
+
+
+def save_checkpoint_during_training(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name):
+    """Save model checkpoint during training"""
+    checkpoint_path = os.path.join(output_dir, f"{checkpoint_name}.pt")
+    torch.save({
+        'agent_state_dict': agent.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'args': vars(args),
+        'global_step': global_step,
+        'obs_rms': getattr(envs, 'obs_rms', None),
+        'return_rms': getattr(envs, 'return_rms', None),
+    }, checkpoint_path)
+    print(f"Training checkpoint saved: {checkpoint_path}")
+    return checkpoint_path
 
 
 def make_replay_buffer(args, envs, device):
@@ -69,6 +93,10 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
     q_network, target_network = agent
     game_range = _get_game_range(args.env_id)
 
+    # Setup CSV logging - assume output_dir and metrics_file are passed through args
+    output_dir = getattr(args, 'output_dir', 'outputs')
+    metrics_file = os.path.join(output_dir, "training_metrics.csv")
+
     if args.prioritized_replay:
         def unwrap_data(data):
             data, replay_indices, replay_weights = data
@@ -117,9 +145,6 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
 
         return loss, old_val, td_error, replay_weights, replay_indices
 
-    if args.compile_agent:
-        update_dqn = torch.compile(update_dqn, mode="reduce-overhead")
-
     replay_buffer = make_replay_buffer(args, envs, device)
 
     # TRY NOT TO MODIFY: start the game
@@ -135,15 +160,15 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
     # Initial dormant neurons
     redo_dict = run_redo(torch.tensor(obs[:32], device=device), q_network, optimizer, args.redo_tau, False, False)
 
-    flatten_dict_list_redo_per_layer = {f"dormant_neurons/{i}_{k}": v for i, (k, v) in
-                                        enumerate(redo_dict['dormant_neurons_per_layer'].items())}
-
-    wandb.log({
-        "global_step": global_step,
+    initial_metrics = {
         "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
         "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
-        **flatten_dict_list_redo_per_layer
-    })
+    }
+
+    for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
+        initial_metrics[f"dormant_neurons/{i}_{k}"] = v
+
+    log_metrics_to_csv(metrics_file, global_step, initial_metrics)
 
     duration_linear_schedule = args.exploration_fraction * args.total_timesteps
 
@@ -151,7 +176,7 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
     stop_timer.start()
 
     while global_step < args.total_timesteps:
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, duration_linear_schedule, global_step)
@@ -187,13 +212,13 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
         bar.refresh()
 
         if "_episode" in info.keys():
-            wandb.log({
-                f"global_step": global_step,
+            episode_metrics = {
                 f"charts/episodic_return": np.mean(info["episode"]["r"][info["_episode"]]),
                 f"charts/episodic_return_normalized": _get_normalized_score(
                     info["episode"]["r"][info["_episode"]], game_range),
                 f"charts/episodic_length": np.mean(info["episode"]["l"][info["_episode"]]),
-            })
+            }
+            log_metrics_to_csv(metrics_file, global_step, episode_metrics)
 
         # ALGO LOGIC: training.
         if global_step > args.learning_starts:
@@ -212,14 +237,15 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
                         replay_buffer.update_priorities(replay_indices, td_error.detach().abs().cpu().numpy())
                         assert replay_weights.shape == td_error.shape, f"Replay_weights and td_error do not match"
 
-                wandb.log({
-                    f"global_step": global_step,
+                training_metrics = {
                     f"losses/td_loss": loss,
                     f"losses/q_values": old_val.mean().item(),
                     f"charts/learning_rate": optimizer.param_groups[0]["lr"],
                     f"charts/epsilon": epsilon,
                     f"charts/replay_buffer_beta": replay_buffer.beta if args.prioritized_replay else 0.0,
-                })
+                }
+
+                log_metrics_to_csv(metrics_file, global_step, training_metrics)
 
             # update target network
             if global_step % args.target_network_frequency == 0:
@@ -238,11 +264,12 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
         obs = next_obs
 
-        avg_sps.append(envs.num_envs / (time.time() - start_time))
-        wandb.log({
-            f"global_step": global_step,
+        avg_sps.append(envs.num_envs / (time.perf_counter() - start_time))
+
+        avg_sps_logs = {
             f"charts/avg_sps": int(np.mean(avg_sps))
-        })
+        }
+        log_metrics_to_csv(metrics_file, global_step, avg_sps_logs)
 
         if global_step >= last_eval_step + args.training_eval_ratio * args.total_timesteps:
             stop_timer.stop()
@@ -251,15 +278,15 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
             redo_dict = run_redo(torch.tensor(obs[:32], device=device), q_network, optimizer, args.redo_tau, False,
                                  False)
 
-            flatten_dict_list_redo_per_layer = {f"dormant_neurons/{i}_{k}": v for i, (k, v) in
-                                                enumerate(redo_dict['dormant_neurons_per_layer'].items())}
-
-            wandb.log({
-                "global_step": global_step,
+            dormant_metrics = {
                 "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
                 "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
-                **flatten_dict_list_redo_per_layer
-            })
+            }
+
+            for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
+                dormant_metrics[f"dormant_neurons/{i}_{k}"] = v
+
+            log_metrics_to_csv(metrics_file, global_step, dormant_metrics)
 
             # calc_translation_sensitivity(q_network, torch.tensor(obs[:32], device=device), device)
 
@@ -272,11 +299,11 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
             last_eval_step = global_step
             stop_timer.start()
 
-    wandb.log({
-        "global_step": global_step,
+    avg_sps_time = {
         f"charts/avg_sps": int(np.mean(avg_sps)),
         f"charts/elapsed_train_time": stop_timer.get_elapsed_time(),
-    })
+    }
+    log_metrics_to_csv(metrics_file, global_step, avg_sps_time)
     # Free memory of replay buffer
     del replay_buffer
     return envs, q_network, global_step, torch.tensor(obs, device=device)

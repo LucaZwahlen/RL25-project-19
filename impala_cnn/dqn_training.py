@@ -1,4 +1,5 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/dqn/#dqn_ataripy
+import csv
 import os
 import random
 import time
@@ -18,8 +19,7 @@ from impoola.maker.make_env import make_an_env
 from impoola.prune.redo import run_redo
 from impoola.train.agents import DQNAgent
 from impoola.train.train_dqn_agent import train_dqn_agent
-from impoola.utils.utils import (measure_latency_agent, network_summary,
-                                 save_agent_to_wandb)
+from impoola.utils.utils import measure_latency_agent, network_summary
 
 
 @dataclass
@@ -31,33 +31,17 @@ class Args:
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    cuda: bool = True
-    """if toggled, cuda will be enabled by default"""
-    track: bool = True
-    """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "impoola"
-    """the wandb's project name"""
-    wandb_entity: str = 'wandb_entity'
-    """the entity (team) of wandb's project"""
-    capture_video: bool = False
-    """whether to capture videos of the agent performances (check out `videos` folder)"""
-    env_track_setting: str = "generalization"
-    """the track setting of the environment"""
     n_episodes_rollout: int = int(2.5e3)
     """the number of episodes to rollout for evaluation"""
-    training_eval_ratio: float = 0.01
+    training_eval_ratio: float = 0.1
     """the ratio of training evaluation"""
     deterministic_rollout: bool = True
     """if toggled, the rollout will be deterministic"""
-    measure_latency: bool = False
-    """if toggled, the latency of the agent will be measured"""
-    compile_agent: bool = False
-    """if toggled, the agent will be compiled"""
     normalize_reward: bool = False
     """if toggled, the reward will be normalized"""
 
     # Algorithm specific arguments
-    env_id: str = "bigfish"
+    env_id: str = "fruitbot"
     """the id of the environment"""
     distribution_mode: str = "easy"
     """the distribution mode of the environment"""
@@ -125,12 +109,6 @@ class Args:
     """if toggled, pooling layer will be enabled before the last linear layer"""
     pooling_layer_kernel_size: int = 1
     """the kernel size of the pooling layer"""
-    use_dropout: bool = False
-    """if toggled, dropout will be enabled"""
-    use_1d_conv: bool = False
-    """if toggled, 1D convolution will be enabled"""
-    use_depthwise_conv: bool = False
-    """if toggled, depthwise convolution will be enabled"""
 
     # ReDo settings
     redo_tau: float = 0.025
@@ -139,11 +117,47 @@ class Args:
     """the interval for the ReDo algorithm (computed in runtime)"""
 
 
+def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name):
+    """Save model checkpoint"""
+    checkpoint_path = os.path.join(output_dir, f"{checkpoint_name}.pt")
+    torch.save({
+        'agent_state_dict': agent.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'args': vars(args),
+        'global_step': global_step,
+        'obs_rms': getattr(envs, 'obs_rms', None),
+        'return_rms': getattr(envs, 'return_rms', None),
+    }, checkpoint_path)
+    print(f"Checkpoint saved: {checkpoint_path}")
+    return checkpoint_path
+
+
+def log_metrics(csv_file, global_step, metrics_dict):
+    """Log metrics to CSV file"""
+    with open(csv_file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        for key, value in metrics_dict.items():
+            writer.writerow([global_step, key, value])
+
+
 if __name__ == "__main__":
 
     args = tyro.cli(Args)
     num_iterations = args.total_timesteps // args.num_envs // args.train_frequency
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+
+    # Create output directory
+    output_dir = f"outputs/{run_name}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Pass output_dir to args so train_dqn_agent can access it
+    args.output_dir = output_dir
+
+    # Initialize CSV logging
+    metrics_file = os.path.join(output_dir, "training_metrics.csv")
+    with open(metrics_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['global_step', 'metric', 'value'])
 
     global progcen_hns
     if args.distribution_mode == "easy":
@@ -154,17 +168,7 @@ if __name__ == "__main__":
         raise ValueError(f"Invalid distribution mode: {args.distribution_mode}")
 
     print(f"Run name: {run_name} | Batch size: {args.batch_size} | Num iterations: {num_iterations}")
-
-    wandb.init(
-        project=args.wandb_project_name,
-        entity=args.wandb_entity,
-        config=vars(args),
-        name=run_name,
-        monitor_gym=True,
-        save_code=True,
-        mode="disabled" if not args.track else "online",
-    )
-    wandb.run.log_code("./impoola")
+    print(f"Outputs will be saved to: {output_dir}")
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -172,14 +176,12 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    if args.cuda:
-        #     torch.backends.cudnn.allow_tf32 = True
-        #     torch.backends.cuda.matmul.allow_tf32 = True
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+
+    if device.type == "cuda":
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
-
-    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
-    print(f"Device: {device}")
 
     # Environment that will be used for training
     envs = make_an_env(args, seed=args.seed,
@@ -195,10 +197,7 @@ if __name__ == "__main__":
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
-        use_pooling_layer=args.use_pooling_layer, pooling_layer_kernel_size=args.pooling_layer_kernel_size,
-        use_dropout=args.use_dropout,
-        use_1d_conv=args.use_1d_conv,
-        use_depthwise_conv=args.use_depthwise_conv
+        use_pooling_layer=args.use_pooling_layer, pooling_layer_kernel_size=args.pooling_layer_kernel_size
     ).to(device)
 
     target_network = DQNAgent(
@@ -207,10 +206,7 @@ if __name__ == "__main__":
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
-        use_pooling_layer=args.use_pooling_layer, pooling_layer_kernel_size=args.pooling_layer_kernel_size,
-        use_dropout=args.use_dropout,
-        use_1d_conv=args.use_1d_conv,
-        use_depthwise_conv=args.use_depthwise_conv
+        use_pooling_layer=args.use_pooling_layer, pooling_layer_kernel_size=args.pooling_layer_kernel_size
     ).to(device)
 
     with torch.no_grad():
@@ -223,26 +219,14 @@ if __name__ == "__main__":
     # print summary of net
     statistics, total_params, m_macs, param_bytes = network_summary(q_network, example_input, device)
 
-    # compile the model using torch
-    if args.compile_agent:
-        q_network = torch.compile(q_network, mode="reduce-overhead", fullgraph=True)
-        target_network = torch.compile(target_network, mode="reduce-overhead", fullgraph=True)
-
-    # benchmark the model
-    if args.cuda and args.measure_latency:
-        latency_256, latency_1 = measure_latency_agent(q_network, envs, device)
-        print(f"Latency for a batch of 256 / 1: {latency_256:.2f} ms / {latency_1:.2f} ms")
-        wandb.log({
-            "charts/latency_256": latency_256,
-            "charts/latency_1": latency_1,
-        }, commit=False)
-
-    wandb.log({
-        "global_step": 0,
+    # Log initial metrics
+    initial_metrics = {
         "charts/total_network_params": total_params,
         "charts/total_network_m_macs": m_macs,
         "charts/total_network_param_bytes": param_bytes,
-    })
+    }
+
+    log_metrics(metrics_file, 0, initial_metrics)
 
     optimizer = optim.Adam(
         q_network.parameters(),
@@ -273,14 +257,8 @@ if __name__ == "__main__":
     envs.close()
     agent = q_network
 
-    # ANALYSIS OF THE FINAL MODEl
-    save_agent_to_wandb(
-        vars(args), agent, optimizer,
-        envs.obs_rms if hasattr(envs, "obs_rms") else None,
-        envs.return_rms if hasattr(envs, "return_rms") else None,
-        metadata={
-            "global_step": global_step,
-        }, aliases=["latest"])
+    # ANALYSIS OF THE FINAL MODEL
+    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, 'checkpoint_final')
 
     # Check how much GPU memory is used. If less than 5 GB are available, run the redo algorithm on the CPU
     if torch.cuda.get_device_properties(0).total_memory < 5e9:
@@ -289,15 +267,17 @@ if __name__ == "__main__":
         print("Running ReDo on CPU")
 
     redo_dict = run_redo(b_obs[:32], agent, optimizer, args.redo_tau, False, False)
-    flatten_dict_list_redo_per_layer = {f"dormant_neurons/{i}_{k}": v for i, (k, v) in
-                                        enumerate(redo_dict['dormant_neurons_per_layer'].items())}
 
-    wandb.log({
-        "global_step": global_step,
-        "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
-        "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
-        **flatten_dict_list_redo_per_layer
-    })
+    # Log dormant neuron analysis
+    dormant_metrics = {
+        "zero_fraction": redo_dict['zero_fraction'],
+        "dormant_fraction": redo_dict['dormant_fraction'],
+    }
+    for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
+        dormant_metrics[f"dormant_neurons_{i}_{k}"] = v
+
+    log_metrics(metrics_file, global_step, dormant_metrics)
+
     agent = agent.to(device)
     print(f"Zero fraction: {redo_dict['zero_fraction']:.2f} | Dormant fraction: {redo_dict['dormant_fraction']:.2f}")
 
