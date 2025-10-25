@@ -1,6 +1,5 @@
 import os
 import time
-import timeit
 from collections import deque
 from test import evaluate
 
@@ -15,7 +14,7 @@ from procgen import ProcgenEnv
 from ucb_rl2_meta import algo, utils
 from ucb_rl2_meta.algo.drac import DrAC
 from ucb_rl2_meta.arguments import parser
-from ucb_rl2_meta.envs import VecPyTorchProcgen, VecPyTorchProcgenSmall
+from ucb_rl2_meta.envs import VecPyTorchProcgen
 from ucb_rl2_meta.model import AugCNN, Policy, Policy_Sit
 from ucb_rl2_meta.storage import RolloutStorage
 
@@ -85,11 +84,9 @@ def train(args):
     venv = VecExtractDictObs(venv, "rgb")
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
     venv = VecNormalize(venv=venv, ob=False)
-    # envs = VecPyTorchProcgen(venv, device)
-    envs = VecPyTorchProcgenSmall(venv, device)
+    envs = VecPyTorchProcgen(venv, device)
 
     obs_shape = envs.observation_space.shape
-    print("Observation shape: ", obs_shape)
     if args.use_sit:
         actor_critic = Policy_Sit(
             obs_shape,
@@ -269,10 +266,9 @@ def train(args):
             # Sample actions
             with torch.no_grad():
                 obs_id = aug_id(rollouts.obs[step])
-                with torch.cuda.amp.autocast():
-                    value, action, action_log_prob, recurrent_hidden_states = actor_critic.act(
-                        obs_id, rollouts.recurrent_hidden_states[step],
-                        rollouts.masks[step])
+                value, action, action_log_prob, recurrent_hidden_states = actor_critic.act(
+                    obs_id, rollouts.recurrent_hidden_states[step],
+                    rollouts.masks[step])
 
             # Obser reward and next obs
             obs, reward, done, infos = envs.step(action)

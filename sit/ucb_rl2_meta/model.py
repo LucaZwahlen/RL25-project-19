@@ -502,7 +502,7 @@ class SiTBase(NNBase):
 
         apply_init_(self.modules())
         if choice == 0:
-            self.encoder_obs = Siet(img_size=32, action_dim=15, depth=2, in_chans=3, patch_size=8,
+            self.encoder_obs = Siet(img_size=64, action_dim=15, depth=2, in_chans=3, patch_size=8,
                                     embed_dim=hidden_size, num_heads=8)
         else:
             raise NotImplementedError("SiT - Tiny is not implemented, use choice=0")

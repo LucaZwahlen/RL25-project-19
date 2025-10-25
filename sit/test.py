@@ -4,10 +4,10 @@ from baselines.common.vec_env.vec_monitor import VecMonitor
 from baselines.common.vec_env.vec_normalize import VecNormalize
 from baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
 from procgen import ProcgenEnv
-from ucb_rl2_meta.envs import VecPyTorchProcgen, VecPyTorchProcgenSmall
+from ucb_rl2_meta.envs import VecPyTorchProcgen
 
 
-def evaluate(args, actor_critic, device, num_processes=32, aug_id=None):  # Increased from 1 to 32
+def evaluate(args, actor_critic, device, num_processes=32, aug_id=None):
     actor_critic.eval()
 
     # Sample Levels From the Full Distribution
@@ -17,8 +17,7 @@ def evaluate(args, actor_critic, device, num_processes=32, aug_id=None):  # Incr
     venv = VecExtractDictObs(venv, "rgb")
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
     venv = VecNormalize(venv=venv, ob=False)
-    # eval_envs = VecPyTorchProcgen(venv, device)
-    eval_envs = VecPyTorchProcgenSmall(venv, device)
+    eval_envs = VecPyTorchProcgen(venv, device)
 
     eval_episode_rewards = []
 
@@ -27,7 +26,7 @@ def evaluate(args, actor_critic, device, num_processes=32, aug_id=None):  # Incr
         num_processes, actor_critic.recurrent_hidden_state_size, device=device)
     eval_masks = torch.ones(num_processes, 1, device=device)
 
-    while len(eval_episode_rewards) < 32:  # Increased from 10 to 32 episodes
+    while len(eval_episode_rewards) < 32:
         with torch.no_grad():
             if aug_id:
                 obs = aug_id(obs)

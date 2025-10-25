@@ -22,8 +22,7 @@ from procgen import ProcgenEnv
 from baselines.common.vec_env.vec_normalize import VecNormalize
 from baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
 from ucb_rl2_meta import utils
-from ucb_rl2_meta.envs import (TransposeImageProcgen, VecPyTorchProcgen,
-                               VecPyTorchProcgenSmall)
+from ucb_rl2_meta.envs import TransposeImageProcgen, VecPyTorchProcgen
 
 
 def evaluate(args, actor_critic, device, num_processes=1, aug_id=None, render=False):
@@ -31,13 +30,12 @@ def evaluate(args, actor_critic, device, num_processes=1, aug_id=None, render=Fa
 
     # Sample Levels From the Full Distribution
     venv = ProcgenEnv(num_envs=num_processes, env_name=args.env_name,
-                      num_levels=200, start_level=0,
+                      num_levels=0, start_level=0,
                       distribution_mode=args.distribution_mode)  # Remove render_mode
     venv = VecExtractDictObs(venv, "rgb")
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
     venv = VecNormalize(venv=venv, ob=False)
-    # eval_envs = VecPyTorchProcgen(venv, device)
-    eval_envs = VecPyTorchProcgenSmall(venv, device)
+    eval_envs = VecPyTorchProcgen(venv, device)
 
     eval_episode_rewards = []
 

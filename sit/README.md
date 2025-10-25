@@ -88,9 +88,6 @@ ___
 python train2.py --env_name starpilot --device_id 0 --seed 1 --use_sit True --choice 0  --run_name Siet --num_mini_batch 96  --ppo_epoch 2  --hidden_size 64   
 ```
 
-```bash
-python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True --choice 0  --run_name Siet --num_mini_batch 96  --ppo_epoch 1  --hidden_size 32   
-```
 ___
 
 ## References
