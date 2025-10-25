@@ -118,60 +118,6 @@ def make_procgen_env(args, full_distribution=False, normalize_reward=False, rand
     return envs
 
 
-class EnvpoolToGymNewAPI(gym.Wrapper):
-
-    def __init__(self, env):
-        super().__init__(env)
-        # set is_vector_env to True
-        setattr(self, "is_vector_env", True)
-        setattr(self, "num_envs", env.spec.config.num_envs)
-        setattr(self, "single_action_space", env.action_space)
-        setattr(self, "single_observation_space", env.observation_space)
-
-    def reset(self, **kwargs):
-        return super().reset(**kwargs)
-
-    def step(self, action):
-        ob, reward, terminated, truncated, dict_info = super().step(action)
-
-        return ob, reward, terminated, truncated, dict_info
-
-
-class RecordEpisodeStatistics2(gym.Wrapper):
-    def __init__(self, env, deque_size=100):
-        super().__init__(env)
-        self.num_envs = getattr(env, "num_envs", 1)
-        self.episode_returns = None
-        self.episode_lengths = None
-
-    def reset(self, **kwargs):
-        observations = super().reset(**kwargs)
-        self.episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
-        self.lives = np.zeros(self.num_envs, dtype=np.int32)
-        self.returned_episode_returns = np.zeros(self.num_envs, dtype=np.float32)
-        self.returned_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
-        return observations
-
-    def step(self, action):
-        observations, rewards, terminated, truncated, infos = super().step(action)
-        self.episode_returns += infos["reward"]
-        self.episode_lengths += 1
-        self.returned_episode_returns[:] = self.episode_returns
-        self.returned_episode_lengths[:] = self.episode_lengths
-        self.episode_returns *= 1 - infos["terminated"]
-        self.episode_lengths *= 1 - infos["terminated"]
-        infos["r"] = self.returned_episode_returns
-        infos["l"] = self.returned_episode_lengths
-        return (
-            observations,
-            rewards,
-            terminated,
-            truncated,
-            infos,
-        )
-
-
 def make_an_env(args, seed, normalize_reward, full_distribution=False):
     if args.env_id in progcen_hns.keys():
         envs = make_procgen_env(

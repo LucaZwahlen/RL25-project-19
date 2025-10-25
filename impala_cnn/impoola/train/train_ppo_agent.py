@@ -8,10 +8,9 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn as nn
-from impoola.eval.evaluation import (_get_game_range, _get_normalized_score,
-                                     run_test_track, run_training_track)
+from impoola.eval.evaluation import (_get_game_range, run_test_track,
+                                     run_training_track)
 from impoola.prune.redo import run_redo
-from impoola.utils.utils import StopTimer
 from tqdm import trange
 
 
@@ -131,9 +130,6 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
     # Initialize cumulative training timer (excluding evaluation time)
     cumulative_training_time = 0.0
     iteration_start_time = time.time()
-
-    stop_timer = StopTimer()
-    stop_timer.start()
 
     next_obs, _ = envs.reset()
 
@@ -285,9 +281,7 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
         cumulative_training_time += (iteration_end_time - iteration_start_time)
 
         # Quick test evaluation every epoch (like SIT) - silently handle errors and EXCLUDE from training time
-        eval_start_time = time.time()
         test_mean, test_median = evaluate_test_performance(agent, args, device)
-        eval_end_time = time.time()
         # Note: We don't add eval time to cumulative_training_time
 
         epoch_metrics.update({
@@ -350,7 +344,6 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
 
         # Detailed evaluation every 10% (keep original behavior for detailed tracking)
         if iteration % max(1, args.num_iterations // 10) == 0:
-            stop_timer.stop()
 
             # Estimate number of dormant neurons
             redo_dict = run_redo(b_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
@@ -370,8 +363,6 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
             eval_args.n_episodes_rollout = int(1e3)
             run_training_track(agent, eval_args, global_step)
             run_test_track(agent, eval_args, global_step)
-
-            stop_timer.start()
 
         if args.pruning_type == "UnstructuredNorm":
             did_prune, current_network_params, global_sparsity = pruning_step(

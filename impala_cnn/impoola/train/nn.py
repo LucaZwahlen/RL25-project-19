@@ -2,42 +2,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from impoola.train.moe import ExpertModel, SoftMoE
-
-
-def layer_init_kaiming_uniform(layer, a=0, nonlinearity='relu'):
-    nn.init.kaiming_uniform_(layer.weight, a=a, nonlinearity=nonlinearity)
-    # nn.init.kaiming_uniform_(layer.weight, a=np.sqrt(5))
-    nn.init.constant_(layer.bias, 0)
-    return layer
-
-
-def layer_init_conv_torch_standard(layer):
-    nn.init.kaiming_uniform_(layer.weight, a=np.sqrt(5))
-    if layer.bias is not None:
-        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(layer.weight)
-        if fan_in != 0:
-            bound = 1 / np.sqrt(fan_in)
-            layer.uniform_(layer.bias, -bound, bound)
-    return layer
-
-
-def layer_init_xavier_uniform(layer, gain=1.0):
-    nn.init.xavier_uniform_(layer.weight, gain=gain)
-    nn.init.constant_(layer.bias, 0)
-    return layer
 
 
 def layer_init_orthogonal(layer, std=np.sqrt(2), bias_const=0.0):
     nn.init.orthogonal_(layer.weight, std)
     nn.init.constant_(layer.bias, bias_const)
-    return layer
-
-
-def layer_init_normed(layer, norm_dim, scale=1.0):
-    with torch.no_grad():
-        layer.weight.data *= scale / layer.weight.norm(dim=norm_dim, p=2, keepdim=True)
-        layer.bias *= 0
     return layer
 
 
@@ -61,11 +30,6 @@ def encoder_factory(encoder_type, *args, **kwargs):
         model = ImpalaCNN(*args, **kwargs)
         out_features = kwargs['out_features']
         return model, out_features
-
-    elif encoder_type == 'nature':
-        return NatureCNN(*args, **kwargs), kwargs['out_features']
-    else:
-        raise NotImplementedError(f"Unsupported encoder type: {encoder_type}")
 
 
 # taken from https://github.com/AIcrowd/neurips2020-procgen-starter-kit/blob/142d09586d2272a17f44481a115c4bd817cf6a94/models/impala_cnn_torch.py
@@ -95,30 +59,6 @@ class ResidualBlock(nn.Module):
         x = self.activation1(x)
         x = self.conv1(x)
         return x + inputs
-
-
-class LinearResidualBlock(nn.Module):
-    # Based on https://github.com/SonyResearch/simba/blob/master/scale_rl/networks/layers.py
-    def __init__(self, hidden_dim: int, dtype: torch.dtype = torch.float32):
-        super(LinearResidualBlock, self).__init__()
-        self.hidden_dim = hidden_dim
-        self.dtype = dtype
-
-        # self.layer_norm = nn.LayerNorm(hidden_dim, dtype=dtype)
-        self.fc1 = nn.Linear(hidden_dim, hidden_dim * 4)
-        self.fc2 = nn.Linear(hidden_dim * 4, hidden_dim)
-
-        # Initialize weights using He initialization
-        nn.init.kaiming_normal_(self.fc1.weight, nonlinearity='relu')
-        nn.init.kaiming_normal_(self.fc2.weight, nonlinearity='relu')
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        res = x
-        # x = self.layer_norm(x)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.fc2(x)
-        return res + x
 
 
 class ConvSequence(nn.Module):
@@ -155,16 +95,6 @@ class ConvSequence(nn.Module):
     def get_output_shape(self):
         _c, h, w = self._input_shape
         return self._out_channels, (h + 1) // 2, (w + 1) // 2
-
-
-class GlobalSumPool2d(nn.Module):
-    def forward(self, x):
-        return x.sum(dim=(2, 3))
-
-
-class GlobalFeatureAvgPool2d(nn.Module):
-    def forward(self, x):
-        return x.reshape(x.shape[0], x.shape[1], -1).mean(dim=1)
 
 
 class ImpalaCNN(nn.Module):
@@ -225,117 +155,3 @@ class ImpalaCNN(nn.Module):
 
     def get_output_shape(self):
         return self.network[-2].out_features
-
-    # def positional_signal(self, x):
-    #     # add a positional signal as overlay to the input image using a sin cos signal
-    #     b, c, h, w = x.shape
-    #     assert h == w
-    #     pos = torch.arange(h, device=x.device).float()
-    #     pos = pos / h
-    #     pos = pos.unsqueeze(0).unsqueeze(0).expand(b, 1, h)
-    #     pos = pos.unsqueeze(2).expand(b, 1, h, w)
-    #     pos = torch.cat([torch.sin(pos * np.pi), torch.cos(pos * np.pi)], dim=1)
-    #     return pos
-
-    # class PositionalEncoding(nn.Module):
-    #     def __init__(self, height, width, d_model):
-    #         super(PositionalEncoding, self).__init__()
-    #
-    #         # Create the positional encoding matrix
-    #         pe = torch.zeros(d_model, height, width)
-    #         y_pos, x_pos = torch.meshgrid(torch.arange(height), torch.arange(width))
-    #         position = torch.stack([x_pos, y_pos], dim=0)  # Shape: [2, height, width]
-    #
-    #         # Calculate sinusoids for the positional encoding
-    #         for i in range(0, d_model):
-    #             if i % 2 == 0:
-    #                 pe[i] = torch.sin(position[0] / (10000 ** (i / d_model)))  # sin for x position
-    #             else:
-    #                 pe[i] = torch.cos(position[1] / (10000 ** (i / d_model)))  # cos for y position
-    #
-    #         pe = pe.unsqueeze(0)  # Add batch dimension: [1, d_model, height, width]
-    #         # add it as a buffer so it's saved in the state_dict
-    #         # self.pe = nn.Parameter(pe, requires_grad=False)
-    #         self.register_buffer('pe', pe)
-    #
-    #     def forward(self, x):
-    #         return x + self.pe
-
-
-class StackedAdaptiveAvgPool2d(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.pooling1 = nn.Sequential(nn.AdaptiveAvgPool2d((2, 2)), nn.Flatten())
-        self.pooling2 = nn.Sequential(nn.AdaptiveAvgPool2d((1, 1)), nn.Flatten())
-
-    def forward(self, x):
-        x1 = self.pooling1(x)
-        x2 = self.pooling2(x)
-        return torch.cat([x1, x2], dim=1)
-
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, height, width, d_model, scale=0.1):
-        super().__init__()
-
-        # Create positional grid
-        y_pos, x_pos = torch.meshgrid(torch.arange(height), torch.arange(width), indexing='ij')
-        position = torch.stack([x_pos, y_pos], dim=0).float()  # Shape: [2, height, width]
-
-        # Initialize PE matrix
-        pe = torch.zeros(d_model, height, width)
-
-        # Compute sin/cos encoding
-        for i in range(0, d_model, 2):
-            div_term = 10000 ** (i / d_model)
-            pe[i] = torch.sin(position[0] / div_term)  # Sin for x
-            if i + 1 < d_model:
-                pe[i + 1] = torch.cos(position[1] / div_term)  # Cos for y
-
-        pe = pe.unsqueeze(0)  # Shape: [1, d_model, height, width]
-
-        # Move pe to [0, 1] range and scale
-        pe = (pe + 1) / 2 * scale
-        # Register as buffer (non-trainable parameter)
-        self.register_buffer('pe', pe)
-        # self.alpha = nn.Parameter(torch.tensor(0.05))  # Small trainable factor
-
-    def forward(self, x):
-        return x + self.pe  # * self.alpha
-
-
-class NatureCNN(nn.Module):
-    def __init__(self, envs, width_scale=1, out_features=256, cnn_filters=(32, 64, 64), activation='relu',
-                 use_layer_init_normed=False,
-
-                 ):
-        super().__init__()
-
-        shape = envs.single_observation_space.shape  # (c, h, w)
-
-        layers = [
-            nn.Conv2d(shape[0], cnn_filters[0] * width_scale, 4, stride=2),
-            activation_factory(activation),
-            nn.Conv2d(cnn_filters[0] * width_scale, cnn_filters[1] * width_scale, 4, stride=2),
-            activation_factory(activation),
-            nn.Conv2d(cnn_filters[1] * width_scale, cnn_filters[2] * width_scale, 4, stride=2),
-            activation_factory(activation),
-            nn.Conv2d(cnn_filters[3] * width_scale, cnn_filters[3] * width_scale, 3, stride=1),
-            activation_factory(activation)
-        ]
-
-        layers = layers[:-1]
-        layers += [
-            nn.AdaptiveAvgPool2d((1, 1)),
-            activation_factory(activation)  # TODO: Check order of activation
-        ]
-
-        layers += [
-            nn.Flatten(),
-            nn.LazyLinear(out_features),  # layer_init(nn.Linear(64 * 7 * 7, 512)),  # TODO: Check activation!
-            activation_factory(activation)
-        ]
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.network(x / 255.0)

@@ -19,7 +19,7 @@ from impoola.maker.make_env import make_an_env
 from impoola.prune.redo import run_redo
 from impoola.train.agents import DQNAgent
 from impoola.train.train_dqn_agent import train_dqn_agent
-from impoola.utils.utils import measure_latency_agent, network_summary
+from impoola.utils.utils import network_summary
 
 
 @dataclass
@@ -290,5 +290,4 @@ if __name__ == "__main__":
     evaluation.run_training_track(agent, eval_args, global_step)
 
     # EVALUATION TRACK (2): Out-of-distribution generalization for full distribution
-    if args.env_track_setting == "generalization":
-        evaluation.run_test_track(agent, eval_args, global_step)
+    evaluation.run_test_track(agent, eval_args, global_step)

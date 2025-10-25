@@ -20,7 +20,7 @@ from impoola.maker.make_env import make_an_env
 from impoola.prune.redo import run_redo
 from impoola.train.agents import PPOAgent
 from impoola.train.train_ppo_agent import log_metrics_to_csv, train_ppo_agent
-from impoola.utils.utils import measure_latency_agent, network_summary
+from impoola.utils.utils import network_summary
 
 
 @dataclass
@@ -36,7 +36,7 @@ class Args:
     """the number of episodes to rollout for evaluation"""
     deterministic_rollout: bool = False
     """if toggled, the evaluation will be deterministic"""
-    training_eval_ratio: float = 0.1
+    training_eval_ratio: float = 0.01
     """the ratio of training evaluation"""
     normalize_reward: bool = True
     """if toggled, the reward will be normalized"""

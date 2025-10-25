@@ -315,7 +315,7 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
                 log_metrics_to_csv(metrics_file, global_step, training_metrics)
 
                 # SIT-style logging every N updates (like every epoch in PPO)
-                if update_count % 1000 == 0:  # Log every 1000 updates
+                if update_count % 16384 == 0:  # Log every 16k updates
                     # Get training time BEFORE test evaluation (excluding evaluation time)
                     current_training_time = stop_timer.get_elapsed_time()
 

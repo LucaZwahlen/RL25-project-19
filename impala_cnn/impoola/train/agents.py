@@ -1,6 +1,5 @@
 import torch.nn as nn
-from impoola.train.nn import (encoder_factory, layer_init_normed,
-                              layer_init_orthogonal)
+from impoola.train.nn import encoder_factory, layer_init_orthogonal
 from torch.distributions.categorical import Categorical
 
 
@@ -100,36 +99,3 @@ class PPOAgent(ActorCriticAgent):
     def get_pi_and_value(self, x):
         logits, value = self.forward(x)
         return Categorical(logits=logits), value
-
-
-class PPGAgent(ActorCriticAgent):
-
-    def __init__(self, envs, width_scale=1, out_features=256, chans=(16, 32, 32), activation='relu',
-                 use_layer_init_normed=False, use_spectral_norm=False
-                 ):
-        super().__init__(envs, width_scale, out_features, chans, activation, use_layer_init_normed, use_spectral_norm)
-
-        # Aux critic head
-        aux_critic = nn.Linear(out_features, 1)
-        self.aux_critic = layer_init_normed(aux_critic, norm_dim=1, scale=0.1) if use_layer_init_normed else aux_critic
-
-    def forward(self, x, ):
-        hidden = self.encoder(x)
-        return self.actor(hidden), self.critic(hidden), self.aux_critic(hidden)
-
-    def get_action_and_value(self, x, action=None):
-        hidden = self.encoder(x)
-        logits = self.actor(hidden)
-        pi = Categorical(logits=logits)
-        if action is None:
-            action = pi.sample()
-        return action, pi.log_prob(action), pi.entropy(), self.critic(hidden.detach()), pi.logits
-
-    def get_pi_and_value(self, x):
-        hidden = self.encoder(x)
-        return Categorical(logits=self.actor(hidden)), self.critic(hidden.detach())
-
-    # PPG logic:
-    def get_pi_value_and_aux_value(self, x):
-        hidden = self.encoder(x)
-        return Categorical(logits=self.actor(hidden)), self.critic(hidden.detach()), self.aux_critic(hidden)

@@ -114,17 +114,3 @@ def run_test_track(agent, args, global_step=None, postfix=""):
 
     output_dir = getattr(args, 'output_dir', None)
     _evaluate_and_log_results(args.env_id, eval_avg_return_test, global_step, "test", postfix, output_dir)
-
-
-def run_noise_robustness_track(agent, args, noise_scales=(5, 15, 30), global_step=None, postfix="",
-                               distribution_mode="easy"):
-    print("\nEvaluation: Noise Robustness Track")
-    output_dir = getattr(args, 'output_dir', None)
-
-    for noise_scale in noise_scales:
-        envs = make_an_env(args, seed=args.seed, normalize_reward=False,
-                           full_distribution=True)
-
-        eval_avg_return_noise = rollout(envs, agent, args.n_episodes_rollout, noise_scale, deterministic=args.deterministic_rollout)
-        envs.close()
-        _evaluate_and_log_results(args.env_id, eval_avg_return_noise, global_step, f"noise_{noise_scale}", postfix, output_dir)
