@@ -1,5 +1,5 @@
 from impoola.utils.utils import (calc_translation_sensitivity,
-                                 load_agent_from_wandb)
+                                 load_agent_from_wandb, get_device, get_device_name)
 from impoola.train.nn import layer_init_orthogonal
 import wandb
 import tyro
@@ -64,8 +64,8 @@ class Args:
 if __name__ == "__main__":
     args = tyro.cli(Args)
 
-    device = torch.device("cuda" if args.cuda and torch.cuda.is_available() else "cpu")
-    device_name = torch.cuda.get_device_name(0) if device.type == "cuda" else "CPU"
+    device = get_device()
+    device_name = get_device_name()
     run_name = f"inference_{args.wandb_run_name}_{device_name}"
     print(f"Running inference on {device_name} device")
 

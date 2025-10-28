@@ -20,7 +20,7 @@ from impoola.maker.make_env import make_an_env
 from impoola.prune.redo import run_redo
 from impoola.train.agents import PPOAgent
 from impoola.train.train_ppo_agent import log_metrics_to_csv, train_ppo_agent
-from impoola.utils.utils import network_summary
+from impoola.utils.utils import network_summary, get_device
 
 
 @dataclass
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     print(f"Device: {device}")
 
     if device.type == 'cuda':

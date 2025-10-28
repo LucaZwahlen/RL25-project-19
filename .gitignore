@@ -176,7 +176,11 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python
 
 # Ignore output folders
-impala_cnn/outputs/
+impoola_cnn/outputs/
 sit/checkpoints/
 sit/logs/
+
+.idea
+venv
+outputs
 

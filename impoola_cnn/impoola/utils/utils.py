@@ -1,14 +1,7 @@
-import os
 import time
 
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as F
-from torch.distributions.categorical import Categorical
-from torch.nn import Softmax
-from torch_pruning.utils.benchmark import measure_latency
 from torchinfo import summary
 
 
@@ -62,3 +55,12 @@ class StopTimer:
 
     def __str__(self):
         return f"Elapsed time: {self.get_elapsed_time()} seconds"
+
+
+def get_device():
+    return torch.device("cuda" if torch.cuda.is_available() else "xpu" if torch.xpu.is_available() else "cpu")
+
+
+def get_device_name():
+    device = get_device()
+    return torch.cuda.get_device_name(0) if device.type == "cuda" else "XPU" if device.type == "xpu" else "CPU"

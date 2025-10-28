@@ -1,11 +1,11 @@
 # An install script that pip installs required packages
 # Also checks if the system can use CUDA for GPU acceleration
 
-import os
-import platform
 import re
 import subprocess
 import sys
+
+USE_XPU = False
 
 
 def check_python_version():
@@ -34,7 +34,7 @@ def check_cuda():
         return (major_version, minor_version)
 
     except Exception as e:
-        return None
+        return
 
 
 def get_cuda_index_url(cuda_version):
@@ -89,13 +89,15 @@ def install_packages():
     ]
 
     cuda_version = check_cuda()
-    index_url = get_cuda_index_url(cuda_version)
+    cuda_available = get_cuda_index_url(cuda_version)
 
     base_pip_command = [sys.executable, '-m', 'pip', 'install', '--upgrade']
 
     torch_command = base_pip_command + torch_packages
-    if index_url:
-        torch_command += ['--index-url', index_url]
+    if cuda_available:
+        torch_command += ['--index-url', cuda_available]
+    if USE_XPU:
+        torch_command += ['--index-url', "https://download.pytorch.org/whl/xpu"]
 
     specific_command = base_pip_command + specific_version_packages
     required_command = base_pip_command + required_packages
