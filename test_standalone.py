@@ -81,7 +81,9 @@ class ImpoolaPPOActor(GenericActor):
 
     def act(self, obs, eval_masks):
         with torch.no_grad():
-            action = self.ppo_agent.get_action(obs)
+            obs = obs * 255  # we dont need normalization for impoola
+            action, _, _, _, _ = self.ppo_agent.get_action_and_value(obs)  # Remove deterministic parameter
+
         return action
 
 
@@ -92,8 +94,8 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
                       num_levels=config['num_levels'], start_level=config['start_level'], rand_seed=config['seed'],
                       distribution_mode=args.distribution_mode)  # Remove render_mode
     venv = VecExtractDictObs(venv, "rgb")
-    # venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
-    # venv = VecNormalize(venv=venv, ob=False, ret=False)  # Remove reward normalization for rendering
+    venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
+    venv = VecNormalize(venv=venv, ob=False, ret=False)  # Remove reward normalization for rendering
     eval_envs = VecPyTorchProcgen(venv, device)
 
     obs = eval_envs.reset()
@@ -112,6 +114,7 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
             action = actor.act(obs_aug, eval_masks)
 
         obs, reward, done, infos = eval_envs.step(action)
+
         curr_env_reward += reward.item()
 
         # Render the game using matplotlib
@@ -130,7 +133,6 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
             [[0.0] if done_ else [1.0] for done_ in done],
             dtype=torch.float32,
             device=device)
-
         for info in infos:
             if 'episode' in info.keys():
                 print(f"Episode finished with reward: {info['episode']['r']:.1f}")
@@ -208,7 +210,6 @@ def load_impoola_ppo_checkpoint(checkpoint_path: str, device: torch.device, shap
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False
-
     ).to(device)
 
     # Load weights exactly like train2.py does it
@@ -233,6 +234,7 @@ if __name__ == "__main__":
 
     # Add test-specific arguments
     parser.add_argument('--checkpoint', type=str, required=True, help='Path to checkpoint file')
+    parser.add_argument('--type', type=str, required=True, choices=['sit', 'impoola'], help='Type of agent to load')
 
     args = parser.parse_args()
 
@@ -240,9 +242,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 
     # Load the trained agent
-    # agent = load_sit_checkpoint(args.checkpoint, device, args)
-    agent = load_impoola_ppo_checkpoint(args.checkpoint, device)
-    # Set up augmentation same as train2.py
+    agent = load_impoola_ppo_checkpoint(args.checkpoint, device) if args.type == 'impoola' else load_sit_checkpoint(args.checkpoint, device, args)
+    actor = ImpoolaPPOActor(agent, device) if args.type == 'impoola' else SitActor(agent.actor_critic, device)
     aug_id = sit.data_augs.Identity
 
     render_config: RenderConfig = {
@@ -262,6 +263,4 @@ if __name__ == "__main__":
         'img_plot': ax.imshow(np.zeros((64, 64, 3))),
     }
 
-    # sit_actor = SitActor(agent.actor_critic, device)
-    impoola_ppo_actor = ImpoolaPPOActor(agent, device)
-    render(args, impoola_ppo_actor, device, render_config, canvas_config, aug_id=aug_id)
+    render(args, actor, device, render_config, canvas_config, aug_id=aug_id)
