@@ -1,22 +1,23 @@
 import os
 import time
 from collections import deque
-from test import evaluate
 
-import data_augs
 import numpy as np
 import torch
-from baselines import logger
-from baselines.common.vec_env.vec_monitor import VecMonitor
-from baselines.common.vec_env.vec_normalize import VecNormalize
-from baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
 from procgen import ProcgenEnv
-from ucb_rl2_meta import algo, utils
-from ucb_rl2_meta.algo.drac import DrAC
-from ucb_rl2_meta.arguments import parser
-from ucb_rl2_meta.envs import VecPyTorchProcgen
-from ucb_rl2_meta.model import AugCNN, Policy, Policy_Sit
-from ucb_rl2_meta.storage import RolloutStorage
+
+import sit.data_augs
+from sit.baselines import logger
+from sit.baselines.common.vec_env.vec_monitor import VecMonitor
+from sit.baselines.common.vec_env.vec_normalize import VecNormalize
+from sit.baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
+from sit.test import evaluate
+from sit.ucb_rl2_meta import algo, utils
+from sit.ucb_rl2_meta.algo.drac import DrAC
+from sit.ucb_rl2_meta.arguments import parser
+from sit.ucb_rl2_meta.envs import VecPyTorchProcgen
+from sit.ucb_rl2_meta.model import AugCNN, Policy, Policy_Sit
+from sit.ucb_rl2_meta.storage import RolloutStorage
 
 parser.add_argument(
     '--device_id',
@@ -50,15 +51,15 @@ parser.add_argument(
 # 'rotate': data_augs.Rotate_degree,
 # 'crop2': data_augs.Crop,
 aug_to_func = {
-    'crop': data_augs.Crop,
-    'random-conv': data_augs.RandomConv,
-    # 'grayscale': data_augs.Grayscale,
+    'crop': sit.data_augs.Crop,
+    'random-conv': sit.data_augs.RandomConv,
+    # 'grayscale': sit.data_augs.Grayscale,
 
-    # 'rotate': data_augs.Rotate,
-    # 'cutout': data_augs.Cutout,
-    # 'cutout-color': data_augs.CutoutColor,
-    'color-jitter': data_augs.ColorJitter,
-    'flip': data_augs.Flip,
+    # 'rotate': sit.data_augs.Rotate,
+    # 'cutout': sit.data_augs.Cutout,
+    # 'cutout-color': sit.data_augs.CutoutColor,
+    'color-jitter': sit.data_augs.ColorJitter,
+    'flip': sit.data_augs.Flip,
 }
 
 
@@ -116,7 +117,7 @@ def train(args):
     batch_size = int(args.num_processes * args.num_steps / args.num_mini_batch)
 
     if args.use_ucb:
-        aug_id = data_augs.Identity
+        aug_id = sit.data_augs.Identity
         aug_list = [aug_to_func[t](batch_size=batch_size)
                     for t in list(aug_to_func.keys())]
 
@@ -138,7 +139,7 @@ def train(args):
             ucb_window_length=args.ucb_window_length)
 
     elif args.use_meta_learning:
-        aug_id = data_augs.Identity
+        aug_id = sit.data_augs.Identity
         aug_list = [aug_to_func[t](batch_size=batch_size)
                     for t in list(aug_to_func.keys())]
 
@@ -163,7 +164,7 @@ def train(args):
             aug_coef=args.aug_coef)
 
     elif args.use_rl2:
-        aug_id = data_augs.Identity
+        aug_id = sit.data_augs.Identity
         aug_list = [aug_to_func[t](batch_size=batch_size)
                     for t in list(aug_to_func.keys())]
 
@@ -196,7 +197,7 @@ def train(args):
             num_actions=envs.action_space.n,
             device=device)
     elif args.use_ppo:
-        aug_id = data_augs.Identity
+        aug_id = sit.data_augs.Identity
         # aug_func = aug_to_func[args.aug_type](batch_size=batch_size)
         aug_list = [aug_to_func[t](batch_size=batch_size)
                     for t in list(aug_to_func.keys())]
@@ -215,7 +216,7 @@ def train(args):
             aug_coef=args.aug_coef,
             env_name=args.env_name)
     else:
-        aug_id = data_augs.Identity
+        aug_id = sit.data_augs.Identity
         # aug_func = aug_to_func[args.aug_type](batch_size=batch_size)
         aug_list = [aug_to_func[t](batch_size=batch_size)
                     for t in list(aug_to_func.keys())]

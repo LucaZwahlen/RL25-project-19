@@ -1,6 +1,7 @@
 import torch.nn as nn
-from impoola.train.nn import encoder_factory, layer_init_orthogonal
 from torch.distributions.categorical import Categorical
+
+from impoola_cnn.impoola.train.nn import encoder_factory, layer_init_orthogonal
 
 
 class DQNAgent(nn.Module):

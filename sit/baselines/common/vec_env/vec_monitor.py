@@ -3,7 +3,8 @@ from collections import deque
 
 import numpy as np
 
-from baselines.bench.monitor import ResultsWriter
+from sit.baselines.bench.monitor import ResultsWriter
+
 from .vec_env import VecEnvWrapper
 
 

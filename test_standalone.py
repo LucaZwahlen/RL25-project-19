@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 from abc import ABC, abstractmethod
@@ -5,8 +6,10 @@ from abc import ABC, abstractmethod
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from baselines.common.vec_env.vec_monitor import VecMonitor
-from ucb_rl2_meta.algo.drac import DrAC
+
+from impoola_cnn.impoola.train.agents import PPOAgent
+from sit.baselines.common.vec_env.vec_monitor import VecMonitor
+from sit.ucb_rl2_meta.algo.drac import DrAC
 
 # Fix for numpy deprecations
 if not hasattr(np, 'bool'):
@@ -21,11 +24,13 @@ import os
 import sys
 from typing import TypedDict
 
-from baselines.common.vec_env.vec_normalize import VecNormalize
-from baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
 from procgen import ProcgenEnv
-from ucb_rl2_meta import utils
-from ucb_rl2_meta.envs import TransposeImageProcgen, VecPyTorchProcgen
+
+from impoola_cnn.impoola.maker.make_env import make_procgen_env
+from sit.baselines.common.vec_env.vec_normalize import VecNormalize
+from sit.baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
+from sit.ucb_rl2_meta import utils
+from sit.ucb_rl2_meta.envs import TransposeImageProcgen, VecPyTorchProcgen
 
 
 class RenderConfig(TypedDict):
@@ -67,6 +72,19 @@ class SitActor(GenericActor):
         return action
 
 
+class ImpoolaPPOActor(GenericActor):
+    def __init__(self, ppo_agent, device):
+        self.ppo_agent = ppo_agent
+        self.ppo_agent.to(device)
+        self.ppo_agent.eval()
+        self.device = device
+
+    def act(self, obs, eval_masks):
+        with torch.no_grad():
+            action = self.ppo_agent.get_action(obs)
+        return action
+
+
 def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_id=None):
 
     # Sample Levels From the Full Distribution
@@ -74,8 +92,8 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
                       num_levels=config['num_levels'], start_level=config['start_level'], rand_seed=config['seed'],
                       distribution_mode=args.distribution_mode)  # Remove render_mode
     venv = VecExtractDictObs(venv, "rgb")
-    venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
-    venv = VecNormalize(venv=venv, ob=False, ret=False)  # Remove reward normalization for rendering
+    # venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
+    # venv = VecNormalize(venv=venv, ob=False, ret=False)  # Remove reward normalization for rendering
     eval_envs = VecPyTorchProcgen(venv, device)
 
     obs = eval_envs.reset()
@@ -141,7 +159,7 @@ def load_sit_checkpoint(checkpoint_path: str, device: torch.device, args, shape=
 
     actor_critic.to(device)
 
-    aug_id = data_augs.Identity
+    aug_id = sit.data_augs.Identity
     aug_list = []
     agent = DrAC(
         actor_critic,
@@ -168,30 +186,37 @@ def load_sit_checkpoint(checkpoint_path: str, device: torch.device, args, shape=
     return agent
 
 
-# def load_impoola_ppo_checkpoint(checkpoint_path: str, device: torch.device, shape=(3, 64, 64), action_space=15) -> PPOAgent:
-#     print(f"Loading checkpoint from {checkpoint_path}")
-#     # Load checkpoint
-#     if not os.path.exists(checkpoint_path):
-#         print(f"Checkpoint not found.")
-#         sys.exit(1)
+def load_impoola_ppo_checkpoint(checkpoint_path: str, device: torch.device, shape=(3, 64, 64), action_space=15) -> PPOAgent:
+    print(f"Loading checkpoint from {checkpoint_path}")
+    # Load checkpoint
+    if not os.path.exists(checkpoint_path):
+        print(f"Checkpoint not found.")
+        sys.exit(1)
 
-#     checkpoint = torch.load(checkpoint_path, map_location=device)
-#     args = checkpoint['args']
-#     agent = PPOAgent(
-#         encoder_type=args.encoder_type,
-#         envs=None,
-#         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
-#         activation=args.activation,
-#         use_layer_init_normed=False
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    # convert args from dict to namespace
+    args_dict = checkpoint['args']
+    args = argparse.Namespace(**args_dict)
 
-#     ).to(device)
+    envs = make_procgen_env(args, rand_seed=args.seed,
+                            normalize_reward=args.normalize_reward,
+                            full_distribution=False)
+    print(args)
+    agent = PPOAgent(
+        encoder_type=args.encoder_type,
+        envs=envs,
+        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
+        activation=args.activation,
+        use_layer_init_normed=False
 
-#     # Load weights exactly like train2.py does it
-#     agent.load_state_dict(checkpoint['agent_state_dict'])
+    ).to(device)
 
-#     print(f"Loaded IMPOOLA model from step {checkpoint.get('step', 'unknown')}")
+    # Load weights exactly like train2.py does it
+    agent.load_state_dict(checkpoint['agent_state_dict'])
 
-#     return agent
+    print(f"Loaded IMPOOLA model from step {checkpoint.get('step', 'unknown')}")
+
+    return agent
 
 
 # Standalone testing when run as main
@@ -201,10 +226,10 @@ if __name__ == "__main__":
 
     # Add the train2.py arguments by importing them
     sys.path.append(os.path.dirname(__file__))
-    import data_augs
-    from train2 import \
+    import sit.data_augs
+    from sit.train2 import \
         parser  # This gets the parser with all train2.py arguments
-    from ucb_rl2_meta.model import Policy_Sit
+    from sit.ucb_rl2_meta.model import Policy_Sit
 
     # Add test-specific arguments
     parser.add_argument('--checkpoint', type=str, required=True, help='Path to checkpoint file')
@@ -215,10 +240,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 
     # Load the trained agent
-    agent = load_sit_checkpoint(args.checkpoint, device, args)
-    # agent = load_impoola_ppo_checkpoint(args.checkpoint, device)
+    # agent = load_sit_checkpoint(args.checkpoint, device, args)
+    agent = load_impoola_ppo_checkpoint(args.checkpoint, device)
     # Set up augmentation same as train2.py
-    aug_id = data_augs.Identity
+    aug_id = sit.data_augs.Identity
 
     render_config: RenderConfig = {
         'num_levels': 0,
@@ -237,6 +262,6 @@ if __name__ == "__main__":
         'img_plot': ax.imshow(np.zeros((64, 64, 3))),
     }
 
-    sit_actor = SitActor(agent.actor_critic, device)
-
-    render(args, sit_actor, device, render_config, canvas_config, aug_id=aug_id)
+    # sit_actor = SitActor(agent.actor_critic, device)
+    impoola_ppo_actor = ImpoolaPPOActor(agent, device)
+    render(args, impoola_ppo_actor, device, render_config, canvas_config, aug_id=aug_id)

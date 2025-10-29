@@ -13,14 +13,17 @@ import numpy as np
 import torch
 import torch.optim as optim
 import tyro
-from impoola.eval import evaluation
-from impoola.eval.normalized_score_lists import (progcen_easy_hns,
-                                                 progcen_hard_hns, progcen_hns)
-from impoola.maker.make_env import make_an_env
-from impoola.prune.redo import run_redo
-from impoola.train.agents import PPOAgent
-from impoola.train.train_ppo_agent import log_metrics_to_csv, train_ppo_agent
-from impoola.utils.utils import get_device, network_summary
+
+from impoola_cnn.impoola.eval import evaluation
+from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
+                                                             progcen_hard_hns,
+                                                             progcen_hns)
+from impoola_cnn.impoola.maker.make_env import make_an_env
+from impoola_cnn.impoola.prune.redo import run_redo
+from impoola_cnn.impoola.train.agents import PPOAgent
+from impoola_cnn.impoola.train.train_ppo_agent import (log_metrics_to_csv,
+                                                       train_ppo_agent)
+from impoola_cnn.impoola.utils.utils import get_device, network_summary
 
 
 @dataclass
@@ -188,6 +191,7 @@ if __name__ == "__main__":
     envs = make_an_env(args, seed=args.seed,
                        normalize_reward=args.normalize_reward,
                        full_distribution=False)
+    
 
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 

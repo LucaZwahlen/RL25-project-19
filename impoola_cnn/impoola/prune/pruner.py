@@ -1,21 +1,18 @@
 import functools
 import typing
 import warnings
-import torch
-
-import wandb
-import numpy as np
-from matplotlib import pyplot as plt
-
-from torch_pruning.pruner import GroupNormPruner
-from torch import nn
-from torch_pruning.dependency import Group
-import torch_pruning as tp
 
 import impoola.prune.pytorch_prune as prune
-from impoola.utils.schedules import polynomial_scheduler
+import numpy as np
+import torch
+import torch_pruning as tp
+import wandb
+from matplotlib import pyplot as plt
+from torch import nn
+from torch_pruning.dependency import Group
+from torch_pruning.pruner import BasePruningFunc, GroupNormPruner
 
-from torch_pruning.pruner import BasePruningFunc
+from impoola_cnn.impoola.utils.schedules import polynomial_scheduler
 
 
 def remove_pruning(model):
@@ -28,6 +25,7 @@ def remove_pruning(model):
                 # print(f'No pruning to remove for {name} and {module}')
                 pass
     return model
+
 
 class PyTorchBasePruner:
     def __init__(self, model, iterative_steps, iterative_pruning_ratio_scheduler, pruning_ratio, ignored_layers=[]):
@@ -82,12 +80,12 @@ class PyTorchBasePruner:
                 if isinstance(self.per_step_pruning_ratio, dict):
                     target_dict_weight_int = (np.array(self.per_step_pruning_ratio[name]) * n_weight).astype(int)
                     target_dict_bias_int = (
-                            np.array(self.per_step_pruning_ratio[name]) * self.init_bias_dict_model[name]).astype(int)
+                        np.array(self.per_step_pruning_ratio[name]) * self.init_bias_dict_model[name]).astype(int)
 
                 else:
                     target_dict_weight_int = (np.array(self.per_step_pruning_ratio) * n_weight).astype(int)
                     target_dict_bias_int = (
-                            np.array(self.per_step_pruning_ratio) * self.init_bias_dict_model[name]).astype(int)
+                        np.array(self.per_step_pruning_ratio) * self.init_bias_dict_model[name]).astype(int)
 
                 self.target_dict_weight[name] = np.diff(target_dict_weight_int, prepend=0)
                 self.target_dict_bias[name] = np.diff(target_dict_bias_int, prepend=0)
@@ -404,7 +402,8 @@ class ResNetGroupNormPruner(GroupNormPruner):
                         _pruning_indices = imp_argsort[:n_pruned]
                     pruning_indices.append(_pruning_indices)
 
-            if len(pruning_indices) == 0: continue
+            if len(pruning_indices) == 0:
+                continue
             pruning_indices = torch.unique(torch.cat(pruning_indices, 0)).tolist()
             # create pruning group
             group = self.DG.get_pruning_group(

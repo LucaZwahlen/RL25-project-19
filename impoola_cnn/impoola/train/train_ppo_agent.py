@@ -8,10 +8,12 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn as nn
-from impoola.eval.evaluation import (_get_game_range, run_test_track,
-                                     run_training_track)
-from impoola.prune.redo import run_redo
 from tqdm import trange
+
+from impoola_cnn.impoola.eval.evaluation import (_get_game_range,
+                                                 run_test_track,
+                                                 run_training_track)
+from impoola_cnn.impoola.prune.redo import run_redo
 
 
 def log_metrics_to_csv(csv_file, global_step, metrics_dict):
@@ -46,7 +48,7 @@ def save_checkpoint_during_training(agent, optimizer, args, global_step, envs, o
 
 def evaluate_test_performance(agent, args, device):
     """Quick evaluation on test distribution - simplified version"""
-    from impoola.maker.make_env import make_an_env
+    from impoola_cnn.impoola.maker.make_env import make_an_env
 
     try:
         # Create test environment with full distribution
@@ -121,7 +123,7 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
     learning_rate = optimizer.param_groups[0]["lr"].clone()
     max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
 
-    from impoola.train.ppo_criterion import ppo_gae, ppo_loss
+    from impoola_cnn.impoola.train.ppo_criterion import ppo_gae, ppo_loss
 
     # TRY NOT TO MODIFY: start the game
     global_step = 0
@@ -150,9 +152,10 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
     log_metrics_to_csv(metrics_file, global_step, initial_metrics)
 
     if args.pruning_type != "Baseline":
-        from impoola.maker.make_pruner import make_pruner
-        from impoola.prune.pruning_func import pruning_step
-        from impoola.utils.utils import calculate_global_parameters_number
+        from impoola_cnn.impoola.maker.make_pruner import make_pruner
+        from impoola_cnn.impoola.prune.pruning_func import pruning_step
+        from impoola_cnn.impoola.utils.utils import \
+            calculate_global_parameters_number
 
         pruner, pruning_func, zero_weight_mode = make_pruner(args, agent, args.num_iterations)
         base_network_params = current_network_params = \

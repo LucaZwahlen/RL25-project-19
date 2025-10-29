@@ -317,14 +317,16 @@ def get_placeholder_cached(name):
 # ================================================================
 
 def display_var_info(vars):
-    from baselines import logger
+    from sit.baselines import logger
     count_params = 0
     for v in vars:
         name = v.name
-        if "/Adam" in name or "beta1_power" in name or "beta2_power" in name: continue
+        if "/Adam" in name or "beta1_power" in name or "beta2_power" in name:
+            continue
         v_params = np.prod(v.shape.as_list())
         count_params += v_params
-        if "/b:" in name or "/bias" in name: continue  # Wx+b, bias is not interesting to look at => count params, but not print
+        if "/b:" in name or "/bias" in name:
+            continue  # Wx+b, bias is not interesting to look at => count params, but not print
         logger.info("   %s%s %i params %s" % (name, " " * (55 - len(name)), v_params, str(v.shape)))
 
     logger.info("Total model parameters: %0.2f million" % (count_params * 1e-6))
@@ -349,7 +351,7 @@ def get_available_gpus(session_config=None):
 # ================================================================
 
 def load_state(fname, sess=None):
-    from baselines import logger
+    from sit.baselines import logger
     logger.warn('load_state method is deprecated, please use load_variables instead')
     sess = sess or get_session()
     saver = tf.train.Saver()
@@ -357,7 +359,7 @@ def load_state(fname, sess=None):
 
 
 def save_state(fname, sess=None):
-    from baselines import logger
+    from sit.baselines import logger
     logger.warn('save_state method is deprecated, please use save_variables instead')
     sess = sess or get_session()
     dirname = os.path.dirname(fname)

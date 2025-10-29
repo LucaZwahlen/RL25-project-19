@@ -2,7 +2,7 @@ import gym
 import torch
 from gym.spaces.box import Box
 
-from baselines.common.vec_env.vec_env import VecEnvWrapper
+from sit.baselines.common.vec_env.vec_env import VecEnvWrapper
 
 
 class TransposeObs(gym.ObservationWrapper):

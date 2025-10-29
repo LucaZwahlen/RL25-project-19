@@ -1,12 +1,6 @@
-from impoola.utils.utils import (calc_translation_sensitivity,
-                                 load_agent_from_wandb, get_device, get_device_name)
-from impoola.train.nn import layer_init_orthogonal
-import wandb
-import tyro
-import torch
-import sys
 import os
 import random
+import sys
 from dataclasses import dataclass
 from functools import partial
 from typing import Optional
@@ -14,8 +8,16 @@ from typing import Optional
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import tyro
+import wandb
 from matplotlib import colormaps as cmaps
 from matplotlib.pyplot import tight_layout
+
+from impoola_cnn.impoola.train.nn import layer_init_orthogonal
+from impoola_cnn.impoola.utils.utils import (calc_translation_sensitivity,
+                                             get_device, get_device_name,
+                                             load_agent_from_wandb)
 
 # Use LaTeX-style fonts
 mpl.rcParams['text.usetex'] = True

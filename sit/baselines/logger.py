@@ -153,8 +153,8 @@ class TensorBoardOutputFormat(KVWriter):
         prefix = 'events'
         path = osp.join(osp.abspath(dir), prefix)
         import tensorflow as tf
-        from tensorflow.python import pywrap_tensorflow
         from tensorflow.core.util import event_pb2
+        from tensorflow.python import pywrap_tensorflow
         from tensorflow.python.util import compat
         self.tf = tf
         self.event_pb2 = event_pb2
@@ -345,7 +345,7 @@ class Logger(object):
         if self.comm is None:
             d = self.name2val
         else:
-            from baselines.common import mpi_util
+            from sit.baselines.common import mpi_util
             d = mpi_util.mpi_weighted_mean(self.comm,
                                            {name: (val, self.name2cnt.get(name, 1))
                                             for (name, val) in self.name2val.items()})
@@ -502,9 +502,10 @@ def read_tb(path):
     path : a tensorboard file OR a directory, where we will find all TB files
            of the form events.*
     """
-    import pandas
-    import numpy as np
     from glob import glob
+
+    import numpy as np
+    import pandas
     import tensorflow as tf
     if osp.isdir(path):
         fnames = glob(osp.join(path, "events.*"))

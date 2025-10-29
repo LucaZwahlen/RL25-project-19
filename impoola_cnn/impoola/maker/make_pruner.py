@@ -1,9 +1,10 @@
 from functools import partial
+
 from torch import nn
 
-from impoola.prune.redo import run_redo
-from impoola.utils.schedules import polynomial_scheduler
-from impoola.prune.pruner import UnstructuredNormPruning
+from impoola_cnn.impoola.prune.pruner import UnstructuredNormPruning
+from impoola_cnn.impoola.prune.redo import run_redo
+from impoola_cnn.impoola.utils.schedules import polynomial_scheduler
 
 
 def make_pruner(args, agent, iterative_pruning_steps):

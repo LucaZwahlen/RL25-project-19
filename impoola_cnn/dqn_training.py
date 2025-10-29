@@ -12,14 +12,16 @@ import numpy as np
 import torch
 import torch.optim as optim
 import tyro
-from impoola.eval import evaluation
-from impoola.eval.normalized_score_lists import (progcen_easy_hns,
-                                                 progcen_hard_hns, progcen_hns)
-from impoola.maker.make_env import make_an_env
-from impoola.prune.redo import run_redo
-from impoola.train.agents import DQNAgent
-from impoola.train.train_dqn_agent import train_dqn_agent
-from impoola.utils.utils import network_summary, get_device
+
+from impoola_cnn.impoola.eval import evaluation
+from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
+                                                             progcen_hard_hns,
+                                                             progcen_hns)
+from impoola_cnn.impoola.maker.make_env import make_an_env
+from impoola_cnn.impoola.prune.redo import run_redo
+from impoola_cnn.impoola.train.agents import DQNAgent
+from impoola_cnn.impoola.train.train_dqn_agent import train_dqn_agent
+from impoola_cnn.impoola.utils.utils import get_device, network_summary
 
 
 @dataclass

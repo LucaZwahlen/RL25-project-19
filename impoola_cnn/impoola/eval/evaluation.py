@@ -6,7 +6,8 @@ from collections import deque
 
 import numpy as np
 import torch
-from impoola.maker.make_env import make_an_env, progcen_hns
+
+from impoola_cnn.impoola.maker.make_env import make_an_env, progcen_hns
 
 
 def log_evaluation_to_csv(metrics_file, global_step, metrics_dict):

@@ -1,5 +1,7 @@
 import wandb
-from impoola.utils.utils import calculate_global_parameters_number, calculate_global_sparsity
+
+from impoola_cnn.impoola.utils.utils import (
+    calculate_global_parameters_number, calculate_global_sparsity)
 
 
 def pruning_step(args, agent, optimizer, pruning_func, pruner, step, zero_weight_mode, base_network_params,
@@ -39,4 +41,3 @@ def pruning_step(args, agent, optimizer, pruning_func, pruner, step, zero_weight
         return did_prune, pruned_network_params, global_sparsity
     else:
         raise ValueError(f"Unsupported pruning type: {args.pruning_type}")
-

@@ -1,6 +1,28 @@
+from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
+                                                             progcen_hard_hns)
+from rliable import metrics
+from rliable import library as rly
+from rich.table import Table
+from rich.pretty import pprint
+from rich.console import Console
+from openrlbenchmark.offline_db import (OfflineRun, OfflineRunTag, Tag,
+                                        database_proxy)
+from openrlbenchmark.hns import atari_human_normalized_scores as atari_hns
+from numpy.core.defchararray import title
+from matplotlib.ticker import MultipleLocator
+from expt import Hypothesis, Run
+from dotmap import DotMap
+import wandb
+import tyro
+import seaborn as sns
+import plot_utils as plot_utils
+import peewee as pw
+import pandas as pd
+import openrlbenchmark.cache
+import openrlbenchmark
+import numpy as np
 import copy
 import os
-import scipy
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
@@ -8,39 +30,18 @@ from urllib.parse import parse_qs, urlparse
 
 import expt
 import matplotlib.pyplot as plt
+import scipy
 
 plt.rcParams['text.usetex'] = True
 plt.rcParams['font.family'] = 'serif'  # This ensures that LaTeX will use the serif family (Latin Modern)
 plt.rcParams['text.latex.preamble'] = r'\usepackage{lmodern}'  # Use Latin Modern font
 
-import numpy as np
-import pandas as pd
-import peewee as pw
-import seaborn as sns
-import tyro
-import wandb
 import wandb.apis.reports as wb  # noqa
-from dotmap import DotMap
-from expt import Hypothesis, Run
-from numpy.core.defchararray import title
-from rich.console import Console
-from rich.pretty import pprint
-from rich.table import Table
-from rliable import library as rly
-from rliable import metrics
-import plot_utils as plot_utils
-from matplotlib.ticker import MultipleLocator
+
 
 # Setup
 # pip install openrlbenchmark
 # pip install wandb -U  # force upgrade to the latest version
-
-import openrlbenchmark
-import openrlbenchmark.cache
-from openrlbenchmark.hns import atari_human_normalized_scores as atari_hns
-from openrlbenchmark.offline_db import OfflineRun, OfflineRunTag, Tag, database_proxy
-
-from impoola.eval.normalized_score_lists import progcen_easy_hns, progcen_hard_hns
 
 
 @dataclass
@@ -194,10 +195,10 @@ class Runset:
         else:
             with self.offline_db.bind_ctx([OfflineRun, OfflineRunTag, Tag]):
                 cond = (
-                        (OfflineRun.project == self.project)
-                        & (OfflineRun.entity == self.entity)
-                        & (OfflineRun.config[self.custom_env_id_key] == self.env_id)
-                        & (OfflineRun.config[self.custom_exp_name_key] == self.exp_name)
+                    (OfflineRun.project == self.project)
+                    & (OfflineRun.entity == self.entity)
+                    & (OfflineRun.config[self.custom_env_id_key] == self.env_id)
+                    & (OfflineRun.config[self.custom_exp_name_key] == self.exp_name)
                 )
                 if self.username:
                     cond = cond and OfflineRun.username == self.username
@@ -285,7 +286,7 @@ def create_hypothesis(runset: Runset, scan_history: bool = False) -> Hypothesis:
 
                 if env_id in procgen_hns and 'total_network_params' not in runset.metric and "dormant_neurons" not in runset.metric:
                     run_df["charts/episodic_return"] = (run_df[runset.metric] - procgen_hns[env_id][1]) / (
-                            procgen_hns[env_id][2] - procgen_hns[env_id][1])
+                        procgen_hns[env_id][2] - procgen_hns[env_id][1])
                 else:
                     run_df["charts/episodic_return"] = run_df[runset.metric]
                 # run_df["charts/episodic_return"] = run_df[runset.metric]
@@ -593,7 +594,7 @@ def normalize_score(score_dict: Dict[str, np.ndarray], max_scores: np.ndarray, m
     normalized_score_dict = {}
     for key in score_dict:
         normalized_score_dict[key] = (score_dict[key] - min_scores.reshape(1, -1, 1)) / (
-                max_scores.reshape(1, -1, 1) - min_scores.reshape(1, -1, 1)
+            max_scores.reshape(1, -1, 1) - min_scores.reshape(1, -1, 1)
         )
     return normalized_score_dict
 
@@ -845,10 +846,8 @@ if __name__ == "__main__":
         for key, value in normalized_score_dict.items():
             performance_profile_normalized_score_dict[key] = np.nanmean(value[:, :, -1:], axis=-1)
 
-
         def avg_iqm(scores):
             return np.mean(scipy.stats.trim_mean(scores, proportiontocut=0.25, axis=-1))
-
 
         metric_fns = [
             metrics.aggregate_median,
@@ -874,7 +873,7 @@ if __name__ == "__main__":
 
             ax = axes_sample_efficiency
 
-            aggregate_fn = lambda scores: np.array(
+            def aggregate_fn(scores): return np.array(
                 [metric_fn(scores[..., frame]) for frame in range(scores.shape[-1])])
             aggregate_scores, aggregate_cis = rly.get_interval_estimates(
                 normalized_score_dict, aggregate_fn, reps=args.rc.sample_efficiency_num_bootstrap_reps
@@ -981,7 +980,7 @@ if __name__ == "__main__":
             sharex=args.pc.sharex,
         )
         for metric_fn, ax, metric_name in zip(metric_fns, axes_sample_efficiency.flatten(), metric_names):
-            aggregate_fn = lambda scores: np.array(
+            def aggregate_fn(scores): return np.array(
                 [metric_fn(scores[..., frame]) for frame in range(scores.shape[-1])])
             aggregate_scores, aggregate_cis = rly.get_interval_estimates(
                 normalized_score_dict, aggregate_fn, reps=args.rc.sample_efficiency_num_bootstrap_reps
@@ -1172,7 +1171,7 @@ if __name__ == "__main__":
 
     if args.rc.aggregate_metrics_plots:
         print("plotting aggregate metrics")
-        aggregate_func = lambda x: np.array([metric_fn(x) for metric_fn in [metric_fns[1]]])  # IQM at [1]
+        def aggregate_func(x): return np.array([metric_fn(x) for metric_fn in [metric_fns[1]]])  # IQM at [1]
         aggregate_scores, aggregate_score_cis = rly.get_interval_estimates(
             performance_profile_normalized_score_dict, aggregate_func,
             reps=args.rc.interval_estimates_num_bootstrap_reps
@@ -1185,12 +1184,12 @@ if __name__ == "__main__":
         # add the upper and lower confidence intervals to the dataframe
         for exp_name in aggregate_scores_df.index:
             aggregate_scores_df.loc[exp_name, "IQM_Lower"] = aggregate_scores_df.loc[exp_name, "IQM"] - \
-                                                             aggregate_score_cis[exp_name][0]
+                aggregate_score_cis[exp_name][0]
             aggregate_scores_df.loc[exp_name, "IQM_Upper"] = aggregate_score_cis[exp_name][1] - \
-                                                             aggregate_scores_df.loc[exp_name, "IQM"]
+                aggregate_scores_df.loc[exp_name, "IQM"]
 
         # All scores
-        aggregate_func_all = lambda x: np.array([metric_fn(x) for metric_fn in metric_fns])
+        def aggregate_func_all(x): return np.array([metric_fn(x) for metric_fn in metric_fns])
         aggregate_scores_all, aggregate_score_cis_all = rly.get_interval_estimates(
             performance_profile_normalized_score_dict, aggregate_func_all,
             reps=args.rc.interval_estimates_num_bootstrap_reps
@@ -1206,7 +1205,7 @@ if __name__ == "__main__":
         save_results["IQM_Lower"] = save_results["IQM_Lower"].map("{:.2f}".format)
         save_results["IQM_Upper"] = save_results["IQM_Upper"].map("{:.2f}".format)
         save_results["IQM"] = save_results["IQM"] + " ^{ \pm [" + save_results["IQM_Lower"] + ", " + \
-                              save_results["IQM_Upper"] + "]}"
+            save_results["IQM_Upper"] + "]}"
         save_results = save_results.drop(columns=["IQM_Lower", "IQM_Upper"])
         save_results.to_markdown(open(f"{args.output_filename}_aggregate.md", "w"))
 

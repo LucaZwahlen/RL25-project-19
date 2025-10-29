@@ -3,18 +3,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ucb_rl2_meta.Siet import Siet
-from ucb_rl2_meta.distributions import Categorical
-from ucb_rl2_meta.utils import init
+from sit.ucb_rl2_meta.distributions import Categorical
+from sit.ucb_rl2_meta.Siet import Siet
+from sit.ucb_rl2_meta.utils import init
 
-init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                       constant_(x, 0))
 
-init_relu_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                            constant_(x, 0), nn.init.calculate_gain('relu'))
+def init_(m): return init(m, nn.init.orthogonal_, lambda x: nn.init.
+                          constant_(x, 0))
 
-init_tanh_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                            constant_(x, 0), np.sqrt(2))
+
+def init_relu_(m): return init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0), nn.init.calculate_gain('relu'))
+
+
+def init_tanh_(m): return init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0), np.sqrt(2))
 
 
 def apply_init_(modules):
@@ -264,7 +267,7 @@ class NNBase(nn.Module):
 
             # Let's figure out which steps in the sequence have a zero for any agent
             # We will always assume t=0 has a zero in it as that makes the logic cleaner
-            has_zeros = ((masks[1:] == 0.0) \
+            has_zeros = ((masks[1:] == 0.0)
                          .any(dim=-1)
                          .nonzero()
                          .squeeze()

@@ -1,10 +1,11 @@
 import numpy as np
 import torch
-from baselines.common.vec_env.vec_monitor import VecMonitor
-from baselines.common.vec_env.vec_normalize import VecNormalize
-from baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
 from procgen import ProcgenEnv
-from ucb_rl2_meta.envs import VecPyTorchProcgen
+
+from sit.baselines.common.vec_env.vec_monitor import VecMonitor
+from sit.baselines.common.vec_env.vec_normalize import VecNormalize
+from sit.baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
+from sit.ucb_rl2_meta.envs import VecPyTorchProcgen
 
 
 def evaluate(args, actor_critic, device, num_processes=32, aug_id=None):

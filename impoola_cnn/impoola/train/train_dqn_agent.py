@@ -8,13 +8,16 @@ from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn.functional as F
-from impoola.eval.evaluation import (_get_game_range, _get_normalized_score,
-                                     run_test_track, run_training_track)
-from impoola.prune.redo import run_redo
-from impoola.utils.schedules import linear_schedule
-from impoola.utils.utils import StopTimer
 from stable_baselines3.common.buffers import ReplayBuffer
 from tqdm import trange
+
+from impoola_cnn.impoola.eval.evaluation import (_get_game_range,
+                                                 _get_normalized_score,
+                                                 run_test_track,
+                                                 run_training_track)
+from impoola_cnn.impoola.prune.redo import run_redo
+from impoola_cnn.impoola.utils.schedules import linear_schedule
+from impoola_cnn.impoola.utils.utils import StopTimer
 
 
 def log_metrics_to_csv(csv_file, global_step, metrics_dict):
@@ -49,10 +52,10 @@ def save_checkpoint_during_training(agent, optimizer, args, global_step, envs, o
 
 def make_replay_buffer(args, envs, device):
     if args.prioritized_replay:
-        from impoola.utils.replay_buffer import \
+        from impoola_cnn.impoola.utils.replay_buffer import \
             SimplifiedPrioritizedMultiStepReplayBuffer as Buffer
 
-        # from impoola.utils.replay_buffer import PrioritizedMultiStepReplayBuffer as Buffer
+        # from impoola_cnn.impoola.utils.replay_buffer import PrioritizedMultiStepReplayBuffer as Buffer
         replay_buffer = Buffer(
             args.buffer_size,
             envs.single_observation_space_gymnasium,
@@ -69,7 +72,7 @@ def make_replay_buffer(args, envs, device):
         )
     else:
         if args.multi_step > 1:
-            from impoola.utils.replay_buffer import \
+            from impoola_cnn.impoola.utils.replay_buffer import \
                 MultiStepReplayBuffer as Buffer
             replay_buffer = Buffer(
                 args.buffer_size,
@@ -97,7 +100,7 @@ def make_replay_buffer(args, envs, device):
 
 def evaluate_test_performance(agent, args, device):
     """Quick evaluation on test distribution - simplified version"""
-    from impoola.maker.make_env import make_an_env
+    from impoola_cnn.impoola.maker.make_env import make_an_env
 
     try:
         # Create test environment with full distribution

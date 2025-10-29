@@ -3,8 +3,9 @@ import gym
 import gymnasium
 import numpy as np
 from gym3 import ViewerWrapper
-from impoola.eval.normalized_score_lists import progcen_hns
 from procgen.env import ProcgenGym3Env, ToBaselinesVecEnv
+
+from impoola_cnn.impoola.eval.normalized_score_lists import progcen_hns
 
 procgen_games_easy_list = [
     "BigfishEasy-v0",
