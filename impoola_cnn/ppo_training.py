@@ -20,7 +20,7 @@ from impoola.maker.make_env import make_an_env
 from impoola.prune.redo import run_redo
 from impoola.train.agents import PPOAgent
 from impoola.train.train_ppo_agent import log_metrics_to_csv, train_ppo_agent
-from impoola.utils.utils import network_summary, get_device
+from impoola.utils.utils import get_device, network_summary
 
 
 @dataclass
@@ -116,9 +116,9 @@ class Args:
     """the logging interval for detailed metrics"""
 
 
-def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name):
+def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, checkpoint_name):
     """Save model checkpoint"""
-    checkpoint_path = os.path.join(output_dir, f"{checkpoint_name}.pt")
+    checkpoint_path = os.path.join(output_dir, f"{run_name}_{checkpoint_name}.pt")
     torch.save({
         'agent_state_dict': agent.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
@@ -233,7 +233,7 @@ if __name__ == "__main__":
         print(f"Rescaled learning rate to {optimizer.param_groups[0]['lr']}")
 
     # Save initial checkpoint
-    save_checkpoint(agent, optimizer, args, 0, envs, output_dir, "checkpoint_000_initial")
+    save_checkpoint(agent, optimizer, args, 0, envs, output_dir, run_name, "checkpoint_000_initial")
 
     # TRAINING STEP - now logs SIT-style metrics every epoch
     envs, agent, global_step, b_obs = train_ppo_agent(args, envs, agent, optimizer, device)
@@ -245,7 +245,7 @@ if __name__ == "__main__":
         train_envs_return_norm_count = envs.return_rms.count
 
     # Save final checkpoint after training
-    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, "checkpoint_100_final")
+    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, "checkpoint_100_final")
 
     envs.close()
 
@@ -277,12 +277,12 @@ if __name__ == "__main__":
     # EVALUATION TRACK (1): In-distribution generalization only for generalization track
     evaluation.run_training_track(agent, eval_args, global_step)
     # Save checkpoint after evaluation
-    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, "checkpoint_after_training_eval")
+    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, "checkpoint_after_training_eval")
 
     # EVALUATION TRACK (2): Out-of-distribution generalization for full distribution
     evaluation.run_test_track(agent, eval_args, global_step)
     # Save final checkpoint after all evaluations
-    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, "checkpoint_after_test_eval")
+    save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, "checkpoint_after_test_eval")
 
     print(f"All training and evaluation complete! Files saved to: {output_dir}")
     print(f"Training metrics logged in SIT format to: {metrics_file}")

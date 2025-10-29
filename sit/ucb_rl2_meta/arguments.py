@@ -91,7 +91,7 @@ parser.add_argument(
 parser.add_argument(
     '--env_name',
     type=str,
-    default='bigfish',
+    default='fruitbot',
     help='environment to train on')
 parser.add_argument(
     '--run_name',
@@ -113,7 +113,7 @@ parser.add_argument(
 parser.add_argument(
     '--hidden_size',
     type=int,
-    default=256,
+    default=64,
     help='state embedding dimension')
 
 # Procgen Arguments.
