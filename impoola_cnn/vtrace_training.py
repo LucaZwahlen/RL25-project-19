@@ -67,6 +67,8 @@ class Args:
     num_iterations: int = 0
     log_interval: int = 1
 
+    n_datapoints_csv: int = 500
+
 
 def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, checkpoint_name):
     checkpoint_path = os.path.join(output_dir, f"{run_name}_{checkpoint_name}.pt")

@@ -15,30 +15,32 @@ def compute_vtrace_targets(rewards,
     K = behavior_logits.shape[-1]
 
     with torch.no_grad():
-        behavior_dist = torch.distributions.Categorical(logits=behavior_logits.reshape(T * N, K))
-        target_dist = torch.distributions.Categorical(logits=target_logits.reshape(T * N, K))
-        actions_flat = actions.view(T * N).long()
-        logp_b = behavior_dist.log_prob(actions_flat).view(T, N)
-        logp_t = target_dist.log_prob(actions_flat).view(T, N)
+        behavior = torch.distributions.Categorical(logits=behavior_logits.view(T * N, K))
+        target = torch.distributions.Categorical(logits=target_logits.view(T * N, K))
+        a = actions.view(T * N).long()
+
+        logp_b = behavior.log_prob(a).view(T, N)
+        logp_t = target.log_prob(a).view(T, N)
+
         rho = (logp_t - logp_b).exp()
-        rho_t_bar = torch.clamp(rho, max=float(rho_bar))
-        c_t_bar = torch.clamp(rho, max=float(c_bar))
+        rho_bar_t = torch.clamp(rho, max=float(rho_bar))
+        c_bar_t = torch.clamp(rho, max=float(c_bar))
 
-        vs = torch.zeros_like(values)
-        v_tp1 = bootstrap_value.view(N)
-        pg_adv = torch.zeros_like(rewards)
+        not_done = (~dones).float()
+        V = values
+        V_tp1 = torch.cat([V[1:], bootstrap_value.view(1, N)], dim=0)
 
+        deltas = rho_bar_t * (rewards + gamma * V_tp1 * not_done - V)
+
+        vs = torch.zeros_like(V)
+        vs_tp1 = bootstrap_value  # [N]
         for t in reversed(range(T)):
-            not_done_tp1 = (~dones[t]).float()
-            delta_t = rho_t_bar[t] * (rewards[t] + gamma * v_tp1 * not_done_tp1 - values[t])
-            vs[t] = values[t] + delta_t
-            if t > 0:
-                v_tp1 = vs[t] + c_t_bar[t] * (rewards[t] + gamma * v_tp1 * not_done_tp1 - values[t])
-            else:
-                v_tp1 = vs[t] + c_t_bar[t] * (rewards[t] + gamma * v_tp1 * not_done_tp1 - values[t])
+            correction = gamma * c_bar_t[t] * (vs_tp1 - V_tp1[t]) * not_done[t]
+            vs[t] = V[t] + deltas[t] + correction
+            vs_tp1 = vs[t]
 
-        pg_adv = (rewards + gamma * torch.cat([vs[1:], bootstrap_value.view(1, N)], dim=0) * (~dones).float() - values)
-        pg_adv = torch.clamp(rho, max=float(rho_bar)) * pg_adv
+        v_tp1_for_pg = torch.cat([vs[1:], bootstrap_value.view(1, N)], dim=0)
+        pg_adv = rho_bar_t * (rewards + gamma * v_tp1_for_pg * not_done - V)
 
     return vs, pg_adv
 

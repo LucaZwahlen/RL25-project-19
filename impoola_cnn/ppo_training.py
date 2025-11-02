@@ -117,6 +117,8 @@ class Args:
     """the number of iterations (computed in runtime)"""
     log_interval: int = 1
     """the logging interval for detailed metrics"""
+    """the number of datapoints to log in the CSV file"""
+    n_datapoints_csv: int = 500
 
 
 def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, checkpoint_name):
@@ -160,8 +162,10 @@ if __name__ == "__main__":
     # Initialize SIT-style CSV with header comment
     with open(sit_format_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['losses/action_loss', 'losses/dist_entropy', 'losses/value_loss', 'test/mean_episode_reward', 'test/median_episode_reward',
-                         'train/mean_episode_reward', 'train/median_episode_reward', 'train/nupdates', 'train/total_num_steps', 'train/total_time'])
+        writer.writerow(['losses/action_loss', 'losses/dist_entropy', 'losses/value_loss', 'test/mean_episode_reward',
+                         'test/median_episode_reward',
+                         'train/mean_episode_reward', 'train/median_episode_reward', 'train/nupdates',
+                         'train/total_num_steps', 'train/total_time'])
     global progcen_hns
     if args.distribution_mode == "easy":
         progcen_hns.update(progcen_easy_hns)
@@ -172,7 +176,8 @@ if __name__ == "__main__":
 
     print(f"Run name: {run_name} | Batch size: {args.batch_size} | Num iterations: {args.num_iterations}")
     print(f"Outputs will be saved to: {output_dir}")
-    print(f"Using SIT-style logging: losses/action_loss, losses/dist_entropy, losses/value_loss, train/test performance every epoch")
+    print(
+        f"Using SIT-style logging: losses/action_loss, losses/dist_entropy, losses/value_loss, train/test performance every epoch")
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -191,7 +196,6 @@ if __name__ == "__main__":
     envs = make_an_env(args, seed=args.seed,
                        normalize_reward=args.normalize_reward,
                        full_distribution=False)
-    
 
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 

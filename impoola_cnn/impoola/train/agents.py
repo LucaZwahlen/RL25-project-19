@@ -47,7 +47,6 @@ class ActorCriticAgent(nn.Module):
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
 
-
     ):
         super().__init__()
 
@@ -113,7 +112,3 @@ class Vtrace(ActorCriticAgent):
     def get_pi_and_value(self, x):
         logits, value = self.forward(x)
         return Categorical(logits=logits), value
-
-    def get_logits(self, x):
-        return self.forward(x)[0]
-

@@ -151,17 +151,6 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
 
     log_metrics_to_csv(metrics_file, global_step, initial_metrics)
 
-    if args.pruning_type != "Baseline":
-        from impoola_cnn.impoola.maker.make_pruner import make_pruner
-        from impoola_cnn.impoola.prune.pruning_func import pruning_step
-        from impoola_cnn.impoola.utils.utils import \
-            calculate_global_parameters_number
-
-        pruner, pruning_func, zero_weight_mode = make_pruner(args, agent, args.num_iterations)
-        base_network_params = current_network_params = \
-            calculate_global_parameters_number(agent, zero_weight_mode=zero_weight_mode)
-        global_sparsity = 0
-
     for iteration in trange(1, args.num_iterations + 1):
         start_time = time.time()
 
@@ -253,125 +242,178 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
 
-        # Calculate average losses
-        avg_policy_loss = total_policy_loss / n_updates
-        avg_value_loss = total_value_loss / n_updates
-        avg_entropy_loss = total_entropy_loss / n_updates
-
-        # Calculate explained variance
-        y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
-        var_y = np.var(y_true)
-        explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
-
-        # SIT-style logging every epoch
-        epoch_metrics = {
-            "train/nupdates": iteration,
-            "train/total_num_steps": global_step,
-            "losses/action_loss": avg_policy_loss,
-            "losses/value_loss": avg_value_loss,
-            "losses/dist_entropy": avg_entropy_loss,
-        }
-
-        # Add training performance if we have episode data
-        if len(training_episode_rewards) > 0:
-            epoch_metrics.update({
-                "train/mean_episode_reward": np.mean(training_episode_rewards),
-                "train/median_episode_reward": np.median(training_episode_rewards),
-            })
-
-        # Update cumulative training time (excluding this iteration's quick test eval)
-        iteration_end_time = time.time()
-        cumulative_training_time += (iteration_end_time - iteration_start_time)
-
-        # Quick test evaluation every epoch (like SIT) - silently handle errors and EXCLUDE from training time
-        test_mean, test_median = evaluate_test_performance(agent, args, device)
-        # Note: We don't add eval time to cumulative_training_time
-
-        epoch_metrics.update({
-            "test/mean_episode_reward": test_mean,
-            "test/median_episode_reward": test_median,
-        })
-
-        # Log to original CSV format (keep all original logging)
-        log_metrics_to_csv(metrics_file, global_step, epoch_metrics)
-
-        # Additional logging for original behavior (only at log_interval)
-        if iteration % args.log_interval == 0 and len(training_episode_rewards) > 1:
-            # Original detailed metrics logging
-            additional_metrics = {
-                "train/fps": int(global_step / (time.time() - start_time)),
-                "train/learning_rate": optimizer.param_groups[0]["lr"].item(),
-                "train/value_loss": avg_value_loss,
-                "train/policy_loss": avg_policy_loss,
-                "train/entropy": avg_entropy_loss,
-                "train/old_approx_kl": old_approx_kl.item() if 'old_approx_kl' in locals() else 0,
-                "train/approx_kl": approx_kl.item() if 'approx_kl' in locals() else 0,
-                "train/clipfrac": np.mean(clipfracs) if clipfracs else 0,
-                "train/explained_variance": explained_var,
-            }
-            log_metrics_to_csv(metrics_file, global_step, additional_metrics)
-
-        # SIT-style CSV logging ONCE per epoch (exact format requested)
-        train_mean_reward = np.mean(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
-        train_median_reward = np.median(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
-
-        log_sit_style_csv(
-            os.path.join(output_dir, "sit_format.csv"),
-            avg_policy_loss,  # action_loss
-            avg_entropy_loss,  # dist_entropy
-            avg_value_loss,   # value_loss
-            test_mean,        # test_mean
-            test_median,      # test_median
-            train_mean_reward,  # train_mean
-            train_median_reward,  # train_median
-            iteration,        # nupdates
-            global_step,      # total_steps
-            cumulative_training_time  # training_time (cumulative, excluding evaluations)
-        )
-
-        # Start timing next iteration (after evaluation is complete)
-        iteration_start_time = time.time()
-
-        # Print progress (similar to SIT format) - only occasionally to reduce noise
-        if iteration % max(1, args.num_iterations // 20) == 0:
-            if len(training_episode_rewards) > 0:
-                print(f"\nUpdate {iteration}, step {global_step}")
-                print(f"Last {len(training_episode_rewards)} training episodes: mean/median reward {np.mean(training_episode_rewards):.1f}/{np.median(training_episode_rewards):.1f}")
-                print(f"Test episodes: mean/median reward {test_mean:.1f}/{test_median:.1f}")
-
-        # Save checkpoint every 10% of training
-        if iteration in checkpoint_intervals:
-            progress = int((iteration / args.num_iterations) * 100)
-            checkpoint_name = f"checkpoint_{progress:03d}_{iteration}"
-            save_checkpoint_during_training(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name)
-
-        # Detailed evaluation every 10% (keep original behavior for detailed tracking)
-        if iteration % max(1, args.num_iterations // 10) == 0:
-
-            # Estimate number of dormant neurons
-            redo_dict = run_redo(b_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
-
-            dormant_metrics = {
-                "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
-                "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
-            }
-
-            for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
-                dormant_metrics[f"dormant_neurons/{i}_{k}"] = v
-
-            log_metrics_to_csv(metrics_file, global_step, dormant_metrics)
-
-            # Detailed eval
-            eval_args = deepcopy(args)
-            eval_args.n_episodes_rollout = int(1e3)
-            run_training_track(agent, eval_args, global_step)
-            run_test_track(agent, eval_args, global_step)
-
-        if args.pruning_type == "UnstructuredNorm":
-            did_prune, current_network_params, global_sparsity = pruning_step(
-                args, agent, optimizer, pruning_func, pruner, iteration,
-                zero_weight_mode, base_network_params, current_network_params, global_sparsity,
-                b_obs,
-            )
+            eval_interval = max(1, (args.num_iterations + args.n_datapoints_csv - 1) // args.n_datapoints_csv)
+            do_eval = (iteration % eval_interval == 0) or (iteration == args.num_iterations) or args.num_iterations == 0
+            if do_eval:
+                iteration_start_time, cumulative_training_time = _evaluate(
+                    total_policy_loss,
+                    total_value_loss,
+                    total_entropy_loss,
+                    n_updates,
+                    b_values,
+                    b_returns,
+                    iteration,
+                    global_step,
+                    training_episode_rewards,
+                    agent,
+                    args,
+                    device,
+                    output_dir,
+                    metrics_file,
+                    optimizer,
+                    iteration_start_time,
+                    cumulative_training_time,
+                    start_time,
+                    old_approx_kl,
+                    approx_kl,
+                    clipfracs,
+                    checkpoint_intervals,
+                    envs,
+                    b_obs
+                )
 
     return envs, agent, global_step, b_obs
+
+
+def _evaluate(
+        total_policy_loss,
+        total_value_loss,
+        total_entropy_loss,
+        n_updates,
+        b_values,
+        b_returns,
+        iteration,
+        global_step,
+        training_episode_rewards,
+        agent,
+        args,
+        device,
+        output_dir,
+        metrics_file,
+        optimizer,
+        iteration_start_time,
+        cumulative_training_time,
+        start_time,
+        old_approx_kl,
+        approx_kl,
+        clipfracs,
+        checkpoint_intervals,
+        envs,
+        b_obs
+):
+
+    # Calculate average losses
+    avg_policy_loss = total_policy_loss / n_updates
+    avg_value_loss = total_value_loss / n_updates
+    avg_entropy_loss = total_entropy_loss / n_updates
+
+    # Calculate explained variance
+    y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
+    var_y = np.var(y_true)
+    explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+
+    # SIT-style logging every epoch
+    epoch_metrics = {
+        "train/nupdates": iteration,
+        "train/total_num_steps": global_step,
+        "losses/action_loss": avg_policy_loss,
+        "losses/value_loss": avg_value_loss,
+        "losses/dist_entropy": avg_entropy_loss,
+    }
+
+    # Add training performance if we have episode data
+    if len(training_episode_rewards) > 0:
+        epoch_metrics.update({
+            "train/mean_episode_reward": np.mean(training_episode_rewards),
+            "train/median_episode_reward": np.median(training_episode_rewards),
+        })
+
+    # Update cumulative training time (excluding this iteration's quick test eval)
+    iteration_end_time = time.time()
+    cumulative_training_time += (iteration_end_time - iteration_start_time)
+
+    # Quick test evaluation every epoch (like SIT) - silently handle errors and EXCLUDE from training time
+    test_mean, test_median = evaluate_test_performance(agent, args, device)
+    # Note: We don't add eval time to cumulative_training_time
+
+    epoch_metrics.update({
+        "test/mean_episode_reward": test_mean,
+        "test/median_episode_reward": test_median,
+    })
+
+    # Log to original CSV format (keep all original logging)
+    log_metrics_to_csv(metrics_file, global_step, epoch_metrics)
+
+    # Additional logging for original behavior (only at log_interval)
+    if iteration % args.log_interval == 0 and len(training_episode_rewards) > 1:
+        # Original detailed metrics logging
+        additional_metrics = {
+            "train/fps": int(global_step / (time.time() - start_time)),
+            "train/learning_rate": optimizer.param_groups[0]["lr"].item(),
+            "train/value_loss": avg_value_loss,
+            "train/policy_loss": avg_policy_loss,
+            "train/entropy": avg_entropy_loss,
+            "train/old_approx_kl": old_approx_kl.item() if 'old_approx_kl' in locals() else 0,
+            "train/approx_kl": approx_kl.item() if 'approx_kl' in locals() else 0,
+            "train/clipfrac": np.mean(clipfracs) if clipfracs else 0,
+            "train/explained_variance": explained_var,
+        }
+        log_metrics_to_csv(metrics_file, global_step, additional_metrics)
+
+    # SIT-style CSV logging ONCE per epoch (exact format requested)
+    train_mean_reward = np.mean(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
+    train_median_reward = np.median(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
+
+    log_sit_style_csv(
+        os.path.join(output_dir, "sit_format.csv"),
+        avg_policy_loss,  # action_loss
+        avg_entropy_loss,  # dist_entropy
+        avg_value_loss,   # value_loss
+        test_mean,        # test_mean
+        test_median,      # test_median
+        train_mean_reward,  # train_mean
+        train_median_reward,  # train_median
+        iteration,        # nupdates
+        global_step,      # total_steps
+        cumulative_training_time  # training_time (cumulative, excluding evaluations)
+    )
+
+    # Start timing next iteration (after evaluation is complete)
+    iteration_start_time = time.time()
+
+    # Print progress (similar to SIT format) - only occasionally to reduce noise
+    if iteration % max(1, args.num_iterations // 20) == 0:
+        if len(training_episode_rewards) > 0:
+            print(f"\nUpdate {iteration}, step {global_step}")
+            print(f"Last {len(training_episode_rewards)} training episodes: mean/median reward {np.mean(training_episode_rewards):.1f}/{np.median(training_episode_rewards):.1f}")
+            print(f"Test episodes: mean/median reward {test_mean:.1f}/{test_median:.1f}")
+
+    # Save checkpoint every 10% of training
+    if iteration in checkpoint_intervals:
+        progress = int((iteration / args.num_iterations) * 100)
+        checkpoint_name = f"checkpoint_{progress:03d}_{iteration}"
+        save_checkpoint_during_training(agent, optimizer, args, global_step, envs, output_dir, checkpoint_name)
+
+    # Detailed evaluation every 10% (keep original behavior for detailed tracking)
+    if iteration % max(1, args.num_iterations // 10) == 0:
+
+        # Estimate number of dormant neurons
+        redo_dict = run_redo(b_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
+
+        dormant_metrics = {
+            "dormant_neurons/zero_fraction": redo_dict['zero_fraction'],
+            "dormant_neurons/dormant_fraction": redo_dict['dormant_fraction'],
+        }
+
+        for i, (k, v) in enumerate(redo_dict['dormant_neurons_per_layer'].items()):
+            dormant_metrics[f"dormant_neurons/{i}_{k}"] = v
+
+        log_metrics_to_csv(metrics_file, global_step, dormant_metrics)
+
+        # Detailed eval
+        eval_args = deepcopy(args)
+        eval_args.n_episodes_rollout = int(1e3)
+        run_training_track(agent, eval_args, global_step)
+        run_test_track(agent, eval_args, global_step)
+
+    return iteration_start_time, cumulative_training_time
