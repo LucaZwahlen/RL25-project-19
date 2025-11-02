@@ -100,3 +100,20 @@ class PPOAgent(ActorCriticAgent):
     def get_pi_and_value(self, x):
         logits, value = self.forward(x)
         return Categorical(logits=logits), value
+
+
+class Vtrace(ActorCriticAgent):
+    def get_action_and_value(self, x, action=None):
+        logits, value = self.forward(x)
+        pi = Categorical(logits=logits)
+        if action is None:
+            action = pi.sample()
+        return action, pi.log_prob(action), pi.entropy(), value, pi.logits
+
+    def get_pi_and_value(self, x):
+        logits, value = self.forward(x)
+        return Categorical(logits=logits), value
+
+    def get_logits(self, x):
+        return self.forward(x)[0]
+
