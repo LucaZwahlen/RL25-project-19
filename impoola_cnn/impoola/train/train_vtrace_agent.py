@@ -1,5 +1,4 @@
 import os
-import os
 import time
 from collections import deque
 from copy import deepcopy
@@ -15,11 +14,13 @@ from impoola_cnn.impoola.prune.redo import run_redo
 from impoola_cnn.impoola.train.train_ppo_agent import log_metrics_to_csv, evaluate_test_performance, log_sit_style_csv, \
     save_checkpoint_during_training
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
+from impoola_cnn.impoola.utils.augmentation import Augmentation
 
 
 def train_vtrace_agent(args, envs, agent, optimizer, device):
-
     training_episode_rewards = deque(maxlen=100)
+
+    augment = Augmentation()
 
     output_dir = getattr(args, 'output_dir', 'outputs')
     metrics_file = os.path.join(output_dir, "training_metrics.csv")
@@ -50,6 +51,9 @@ def train_vtrace_agent(args, envs, agent, optimizer, device):
 
     next_obs, _ = envs.reset()
     next_obs = torch.tensor(next_obs, device=device)
+    if args.use_augmentation:
+        next_obs = augment(next_obs)
+
     next_done = torch.zeros(N, device=device, dtype=torch.bool)
 
     redo_dict = run_redo(next_obs[:args.minibatch_size], agent, optimizer, args.redo_tau, False, False)
@@ -158,8 +162,8 @@ def train_vtrace_agent(args, envs, agent, optimizer, device):
                 b_obs
             )
 
-
     return envs, agent, global_step, b_obs
+
 
 def _evaluate(
         policy_loss,
@@ -182,8 +186,7 @@ def _evaluate(
         envs,
         checkpoint_intervals,
         b_obs
-    ):
-
+):
     avg_policy_loss = policy_loss.item()
     avg_value_loss = value_loss.item()
     avg_entropy_loss = entropy_loss.item()
@@ -278,4 +281,3 @@ def _evaluate(
         run_test_track(agent, eval_args, global_step)
 
     return iteration_start_time, cumulative_training_time
-

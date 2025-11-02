@@ -36,27 +36,30 @@ class Args:
 
     env_id: str = "fruitbot"
     distribution_mode: str = "easy"
+
     total_timesteps: int = int(25e6)
-    learning_rate: float = 3.5e-4
-    num_envs: int = 96
-    unroll_length: int = 40
-    anneal_lr: bool = False
+    learning_rate: float = 4.0e-4
+    anneal_lr: bool = True
+
+    num_envs: int = 90
+    unroll_length: int = 20
     gamma: float = 0.99
-    ent_coef: float = 0.01
+
+    ent_coef: float = 0.02
     vf_coef: float = 0.5
-    max_grad_norm: float = 0.5
+    max_grad_norm: float = 10.0
 
     vtrace_rho_bar: float = 1.0
-    vtrace_c_bar: float = 1.0
+    vtrace_c_bar: float = 2.0
     actor_batches_per_update: int = 1
 
     encoder_type: str = "impala"
     scale: int = 2
     pruning_type: str = "Baseline"
-    weight_decay: float = 0.0e-5
-    latent_space_dim: int = 256
-    cnn_filters: tuple = (16, 32, 32)
-    activation: str = 'relu'
+    weight_decay: float = 1.0e-5
+    latent_space_dim: int = 512
+    cnn_filters: tuple = (32, 64, 64)
+    activation: str = 'silu'
     rescale_lr_by_scale: bool = True
 
     redo_tau: float = 0.025
@@ -67,7 +70,8 @@ class Args:
     num_iterations: int = 0
     log_interval: int = 1
 
-    n_datapoints_csv: int = 200
+    n_datapoints_csv: int = 500
+    use_augmentation: bool = True
 
 
 def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, checkpoint_name):
