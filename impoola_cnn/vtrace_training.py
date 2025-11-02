@@ -34,7 +34,7 @@ class Args:
     training_eval_ratio: float = 0.01
     normalize_reward: bool = True
 
-    env_id: str = "fruitbot" #chaser
+    env_id: str = "chaser" #chaser
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
