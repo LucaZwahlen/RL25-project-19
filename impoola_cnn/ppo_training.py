@@ -118,7 +118,7 @@ class Args:
     log_interval: int = 1
     """the logging interval for detailed metrics"""
     """the number of datapoints to log in the CSV file"""
-    n_datapoints_csv: int = 500
+    n_datapoints_csv: int = 0
 
 
 def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, checkpoint_name):

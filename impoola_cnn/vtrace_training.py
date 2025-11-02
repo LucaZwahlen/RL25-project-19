@@ -38,7 +38,7 @@ class Args:
     distribution_mode: str = "easy"
     total_timesteps: int = int(25e6)
     learning_rate: float = 3.5e-4
-    num_envs: int = 64
+    num_envs: int = 96
     unroll_length: int = 40
     anneal_lr: bool = False
     gamma: float = 0.99
@@ -67,7 +67,7 @@ class Args:
     num_iterations: int = 0
     log_interval: int = 1
 
-    n_datapoints_csv: int = 500
+    n_datapoints_csv: int = 200
 
 
 def save_checkpoint(agent, optimizer, args, global_step, envs, output_dir, run_name, checkpoint_name):
