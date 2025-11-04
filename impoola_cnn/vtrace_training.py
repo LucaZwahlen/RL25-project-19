@@ -12,7 +12,7 @@ import torch
 import torch.optim as optim
 import tyro
 
-from impoola.train.agents import Vtrace
+from impoola_cnn.impoola.train.agents import Vtrace
 from impoola_cnn.impoola.eval import evaluation
 from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
                                                              progcen_hard_hns,
