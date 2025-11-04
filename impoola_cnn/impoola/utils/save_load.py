@@ -23,7 +23,7 @@ def load_checkpoint(agent, optimizer, checkpoint_path, device, envs=None):
     if not os.path.isfile(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
 
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     agent.load_state_dict(checkpoint['agent_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     global_step = checkpoint.get('global_step', 0)

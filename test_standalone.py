@@ -1,6 +1,4 @@
 import argparse
-import os
-import sys
 from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
@@ -20,8 +18,6 @@ if not hasattr(np, 'bool'):
     np.object = object
     np.unicode = str
 
-import os
-import sys
 from typing import TypedDict
 
 from procgen import ProcgenEnv
@@ -29,8 +25,7 @@ from procgen import ProcgenEnv
 from impoola_cnn.impoola.maker.make_env import make_procgen_env
 from sit.baselines.common.vec_env.vec_normalize import VecNormalize
 from sit.baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
-from sit.ucb_rl2_meta import utils
-from sit.ucb_rl2_meta.envs import TransposeImageProcgen, VecPyTorchProcgen
+from sit.ucb_rl2_meta.envs import VecPyTorchProcgen
 
 
 class RenderConfig(TypedDict):
@@ -88,7 +83,6 @@ class ImpoolaPPOActor(GenericActor):
 
 
 def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_id=None):
-
     # Sample Levels From the Full Distribution
     venv = ProcgenEnv(num_envs=1, env_name=args.env_name,
                       num_levels=config['num_levels'], start_level=config['start_level'], rand_seed=config['seed'],
@@ -127,7 +121,7 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
         canvas['img_plot'].set_array(rgb_frame)
         canvas['axis'].set_title(f"Playing {args.env_name} - Reward: {curr_env_reward:.1f}")
 
-        plt.pause(1/config['speed'])  # Slow down for viewing
+        plt.pause(1 / config['speed'])  # Slow down for viewing
 
         eval_masks = torch.tensor(
             [[0.0] if done_ else [1.0] for done_ in done],
@@ -188,7 +182,8 @@ def load_sit_checkpoint(checkpoint_path: str, device: torch.device, args, shape=
     return agent
 
 
-def load_impoola_ppo_checkpoint(checkpoint_path: str, device: torch.device, shape=(3, 64, 64), action_space=15) -> PPOAgent:
+def load_impoola_ppo_checkpoint(checkpoint_path: str, device: torch.device, shape=(3, 64, 64),
+                                action_space=15) -> PPOAgent:
     print(f"Loading checkpoint from {checkpoint_path}")
     # Load checkpoint
     if not os.path.exists(checkpoint_path):
@@ -242,7 +237,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 
     # Load the trained agent
-    agent = load_impoola_ppo_checkpoint(args.checkpoint, device) if args.type == 'impoola' else load_sit_checkpoint(args.checkpoint, device, args)
+    agent = load_impoola_ppo_checkpoint(args.checkpoint, device) if args.type == 'impoola' else load_sit_checkpoint(
+        args.checkpoint, device, args)
     actor = ImpoolaPPOActor(agent, device) if args.type == 'impoola' else SitActor(agent.actor_critic, device)
     aug_id = sit.data_augs.Identity
 
