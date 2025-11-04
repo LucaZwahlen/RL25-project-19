@@ -1,7 +1,3 @@
-import matplotlib.pyplot as plt
-import numpy as np
-
-
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
     if t >= duration:
         return end_e

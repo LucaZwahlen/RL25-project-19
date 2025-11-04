@@ -1,21 +1,9 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/dqn/#dqn_ataripy
-import csv
-import os
-import time
-from collections import deque
 
 import numpy as np
 import torch
 
-from impoola_cnn.impoola.maker.make_env import make_an_env, progcen_hns
-
-
-def log_evaluation_to_csv(metrics_file, global_step, metrics_dict):
-    """Log evaluation metrics to CSV file"""
-    with open(metrics_file, 'a', newline='') as f:
-        writer = csv.writer(f)
-        for key, value in metrics_dict.items():
-            writer.writerow([global_step, key, value])
+from impoola_cnn.impoola.maker.make_env import progcen_hns
 
 
 def rollout(envs, agent, n_episodes=10000, noise_scale=None, deterministic=True):
@@ -75,43 +63,3 @@ def _get_game_range(env_id):
 def get_normalized_score(env_id, eval_avg_return):
     game_range = _get_game_range(env_id)
     return _get_normalized_score(eval_avg_return, game_range)
-
-
-def _evaluate_and_log_results(env_id, eval_avg_return, global_step, prefix, postfix="", output_dir=None):
-    normalized_score = get_normalized_score(env_id, eval_avg_return)
-
-    # Log to CSV if output_dir is provided
-    if output_dir:
-        metrics_file = os.path.join(output_dir, "training_metrics.csv")
-        metrics = {
-            f"scores{postfix}/normalized_score_{prefix}": normalized_score,
-            f"scores{postfix}/eval_avg_return_{prefix}": np.mean(eval_avg_return),
-        }
-        log_evaluation_to_csv(metrics_file, global_step, metrics)
-
-    print(f"\nNormalized score {prefix} ({global_step}): {normalized_score:.4f}")
-    print(f"Average return {prefix}: {np.mean(eval_avg_return):.4f}")
-
-
-def run_training_track(agent, args, global_step=None, postfix=""):
-    print("\nEvaluation: Training Track")
-    envs = make_an_env(args, seed=args.seed, normalize_reward=False,
-                       full_distribution=False)
-
-    eval_avg_return = rollout(envs, agent, args.n_episodes_rollout, deterministic=args.deterministic_rollout)
-    envs.close()
-
-    output_dir = getattr(args, 'output_dir', None)
-    _evaluate_and_log_results(args.env_id, eval_avg_return, global_step, "train", postfix, output_dir)
-
-
-def run_test_track(agent, args, global_step=None, postfix=""):
-    print("\nEvaluation: Test Track")
-    envs = make_an_env(args, seed=args.seed, normalize_reward=False,
-                       full_distribution=True)
-
-    eval_avg_return_test = rollout(envs, agent, args.n_episodes_rollout, deterministic=args.deterministic_rollout)
-    envs.close()
-
-    output_dir = getattr(args, 'output_dir', None)
-    _evaluate_and_log_results(args.env_id, eval_avg_return_test, global_step, "test", postfix, output_dir)
