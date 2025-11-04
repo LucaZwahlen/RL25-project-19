@@ -2,12 +2,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-
 def layer_init_orthogonal(layer, std=np.sqrt(2), bias_const=0.0):
     nn.init.orthogonal_(layer.weight, std)
     nn.init.constant_(layer.bias, bias_const)
     return layer
-
 
 def activation_factory(activation):
     if activation == 'relu':
@@ -23,7 +21,6 @@ def activation_factory(activation):
     else:
         raise NotImplementedError
 
-
 def encoder_factory(encoder_type, *args, **kwargs):
     if encoder_type == 'impala':
         model = ImpalaCNN(*args, **kwargs)
@@ -33,36 +30,44 @@ def encoder_factory(encoder_type, *args, **kwargs):
         model = NewVersion(*args, **kwargs)
         out_features = kwargs['out_features']
         return model, out_features
+    if encoder_type == 'impoola_plus':
+        model = ImpoolaPlusCNN(*args, **kwargs)
+        out_features = kwargs['out_features']
+        return model, out_features
     raise NotImplementedError
-
 
 class ResidualBlock(nn.Module):
     def __init__(self, channels, scale, use_layer_init_normed=False, activation='relu'):
         super().__init__()
-        self.conv0 = nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=3, padding='same')
-        self.conv1 = nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=3, padding='same')
-        self.activation0 = activation_factory(activation)
-        self.activation1 = activation_factory(activation)
+        self.act0 = activation_factory(activation)
+        self.conv0 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.act1 = activation_factory(activation)
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        nn.init.orthogonal_(self.conv0.weight, np.sqrt(2))
+        nn.init.zeros_(self.conv0.bias)
+        nn.init.zeros_(self.conv1.weight)
+        nn.init.zeros_(self.conv1.bias)
+        self.scale = float(scale)
 
     def forward(self, x):
-        inputs = x
-        x = self.activation0(x)
-        x = self.conv0(x)
-        x = self.activation1(x)
-        x = self.conv1(x)
-        return x + inputs
-
+        y = self.act0(x)
+        y = self.conv0(y)
+        y = self.act1(y)
+        y = self.conv1(y)
+        return x + self.scale * y
 
 class ConvSequence(nn.Module):
-    def __init__(self, input_shape, out_channels, scale, use_layer_init_normed=False, activation='relu'):
+    def __init__(self, input_shape, out_channels, scale, use_layer_init_normed=False, activation='relu', pool_type='avg'):
         super().__init__()
         self._input_shape = input_shape
         self._out_channels = out_channels
-        self.conv = nn.Conv2d(in_channels=self._input_shape[0], out_channels=self._out_channels, kernel_size=3, padding="same")
-        self.pooling = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.conv = nn.Conv2d(self._input_shape[0], self._out_channels, kernel_size=3, padding=1)
+        self.pooling = nn.AvgPool2d(kernel_size=3, stride=2, padding=1) if pool_type == 'avg' else nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         nblocks = 2
         self.res_block0 = ResidualBlock(self._out_channels, scale=scale / np.sqrt(nblocks), use_layer_init_normed=use_layer_init_normed, activation=activation)
         self.res_block1 = ResidualBlock(self._out_channels, scale=scale / np.sqrt(nblocks), use_layer_init_normed=use_layer_init_normed, activation=activation)
+        nn.init.orthogonal_(self.conv.weight, np.sqrt(2))
+        nn.init.zeros_(self.conv.bias)
 
     def forward(self, x):
         x = self.conv(x)
@@ -75,7 +80,6 @@ class ConvSequence(nn.Module):
         _c, h, w = self._input_shape
         return self._out_channels, (h + 1) // 2, (w + 1) // 2
 
-
 class ImpalaCNN(nn.Module):
     def __init__(self, envs, width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu', use_layer_init_normed=False):
         super().__init__()
@@ -83,7 +87,7 @@ class ImpalaCNN(nn.Module):
         scale = 1 / np.sqrt(len(cnn_filters))
         cnn_layers = []
         for out_channels in cnn_filters:
-            conv_seq = ConvSequence(shape, int(out_channels * width_scale), scale=scale, use_layer_init_normed=use_layer_init_normed, activation=activation)
+            conv_seq = ConvSequence(shape, int(out_channels * width_scale), scale=scale, use_layer_init_normed=use_layer_init_normed, activation=activation, pool_type='avg')
             shape = conv_seq.get_output_shape()
             cnn_layers.append(conv_seq)
         cnn_layers += [activation_factory(activation)]
@@ -102,54 +106,36 @@ class ImpalaCNN(nn.Module):
     def get_output_shape(self):
         return self.network[-2].out_features
 
-
-class AddCoords(nn.Module):
-    def forward(self, x):
-        b, c, h, w = x.shape
-        yy = torch.linspace(-1, 1, h, device=x.device).view(1, 1, h, 1).expand(b, 1, h, w)
-        xx = torch.linspace(-1, 1, w, device=x.device).view(1, 1, 1, w).expand(b, 1, h, w)
-        return torch.cat([x, xx, yy], dim=1)
-
-
-class MHAAggregator(nn.Module):
-    def __init__(self, channels, out_features, num_heads=4):
+class ImpoolaPlusCNN(nn.Module):
+    def __init__(self, envs, width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu', use_layer_init_normed=False):
         super().__init__()
-        self.mha = nn.MultiheadAttention(embed_dim=channels, num_heads=num_heads, batch_first=True)
-        self.norm = nn.LayerNorm(channels)
-        self.proj = nn.Linear(channels, out_features)
-
-    def forward(self, x):
-        b, c, h, w = x.shape
-        tokens = x.permute(0, 2, 3, 1).reshape(b, h * w, c)
-        y, _ = self.mha(tokens, tokens, tokens)
-        y = self.norm(y)
-        y = y.mean(dim=1)
-        return self.proj(y)
-
-
-class NewVersion(nn.Module):
-    def __init__(self, envs, width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu', use_layer_init_normed=False, num_heads=4):
-        super().__init__()
-        obs_c, obs_h, obs_w = envs.single_observation_space.shape
-        self.add_coords = AddCoords()
-        in_channels = obs_c + 2
+        shape = envs.single_observation_space.shape
         scale = 1 / np.sqrt(len(cnn_filters))
         cnn_layers = []
-        shape = (in_channels, obs_h, obs_w)
         for out_channels in cnn_filters:
-            conv_seq = ConvSequence(shape, int(out_channels * width_scale), scale=scale, use_layer_init_normed=use_layer_init_normed, activation=activation)
+            conv_seq = ConvSequence(shape, int(out_channels * width_scale), scale=scale, use_layer_init_normed=use_layer_init_normed, activation=activation, pool_type='avg')
             shape = conv_seq.get_output_shape()
             cnn_layers.append(conv_seq)
-        cnn_layers += [activation_factory(activation)]
-        self.backbone = nn.Sequential(*cnn_layers)
-        self.aggregator = MHAAggregator(shape[0], out_features, num_heads=num_heads)
+        self.cnn = nn.Sequential(*cnn_layers)
+        self.act = activation_factory(activation)
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+        self.gmp = nn.AdaptiveMaxPool2d((1, 1))
+        in_features_encoder = shape[0] * 2
+        self.proj = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(in_features_encoder, out_features),
+            activation_factory(activation)
+        )
 
     def forward(self, x):
         x = x / 255.0
-        x = self.add_coords(x)
-        x = self.backbone(x)
-        z = self.aggregator(x)
-        return z
+        x = self.cnn(x)
+        x = self.act(x)
+        a = self.gap(x)
+        m = self.gmp(x)
+        x = torch.cat([a, m], dim=1)
+        x = self.proj(x)
+        return x
 
     def get_output_shape(self):
-        return self.aggregator.proj.out_features
+        return self.proj[1].out_features
