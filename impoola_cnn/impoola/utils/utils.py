@@ -64,3 +64,10 @@ def get_device():
 def get_device_name():
     device = get_device()
     return torch.cuda.get_device_name(0) if device.type == "cuda" else "XPU" if device.type == "xpu" else "CPU"
+
+
+def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
+    if t >= duration:
+        return end_e
+    slope = (end_e - start_e) / duration
+    return max(slope * t + start_e, end_e)

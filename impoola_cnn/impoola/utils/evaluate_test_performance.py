@@ -44,4 +44,3 @@ def evaluate_test_performance(agent, args, device):
     except Exception as e:
         # Silently handle errors and return zeros
         return 0.0, 0.0
-

@@ -1,8 +1,6 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/dqn/#dqn_ataripy
-import csv
 import os
 import random
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -17,12 +15,11 @@ from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
                                                              progcen_hard_hns,
                                                              progcen_hns)
 from impoola_cnn.impoola.maker.make_env import make_an_env
-from impoola_cnn.impoola.prune.redo import run_redo
 from impoola_cnn.impoola.train.agents import DQNAgent
 from impoola_cnn.impoola.train.train_dqn_agent import train_dqn_agent
 from impoola_cnn.impoola.utils.csv_logging import init_files
 from impoola_cnn.impoola.utils.save_load import save_checkpoint
-from impoola_cnn.impoola.utils.utils import get_device, network_summary
+from impoola_cnn.impoola.utils.utils import get_device
 
 
 @dataclass
@@ -93,8 +90,6 @@ if __name__ == "__main__":
         progcen_hns.update(progcen_hard_hns)
     else:
         raise ValueError(f"Invalid distribution mode: {args.distribution_mode}")
-
-
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -173,5 +168,4 @@ if __name__ == "__main__":
     envs.close()
     agent = q_network
 
-    save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name,'checkpoint_final')
-
+    save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, 'checkpoint_final')

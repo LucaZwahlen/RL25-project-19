@@ -1,7 +1,6 @@
 import os
 import random
 from collections import deque
-from copy import deepcopy
 
 import numpy as np
 import torch
@@ -10,7 +9,7 @@ from tqdm import trange
 
 from impoola_cnn.impoola.utils.csv_logging import log_sit_style_csv
 from impoola_cnn.impoola.utils.evaluate_test_performance import evaluate_test_performance
-from impoola_cnn.impoola.utils.schedules import linear_schedule
+from impoola_cnn.impoola.utils.utils import linear_schedule
 from impoola_cnn.impoola.utils.utils import StopTimer
 
 

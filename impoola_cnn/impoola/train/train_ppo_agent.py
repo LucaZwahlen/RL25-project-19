@@ -1,11 +1,7 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_atari_envpoolpy
-import csv
-import os
 import time
 from collections import deque
-from copy import deepcopy
 
-from impoola_cnn.impoola.utils.evaluate_test_performance import evaluate_test_performance
 import numpy as np
 import torch
 import torch.nn as nn

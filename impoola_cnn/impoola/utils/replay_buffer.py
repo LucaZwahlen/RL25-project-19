@@ -3,7 +3,7 @@ import sys
 sys.setrecursionlimit(10000)
 
 import numpy as np
-from stable_baselines3.common.buffers import ReplayBuffer, ReplayBufferSamples
+from stable_baselines3.common.buffers import ReplayBuffer
 import torch
 
 

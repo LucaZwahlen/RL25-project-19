@@ -7,8 +7,6 @@ def ppo_loss(agent, mb_obs, mb_logprobs, mb_actions, mb_values, mb_returns, mb_a
     logratio = newlogprob - mb_logprobs
     ratio = logratio.exp()
 
-    # if norm_adv:
-    # if norm_adv and mb_advantages.shape[0] > 1:
     mb_advantages = (mb_advantages - mb_advantages2.mean()) / (mb_advantages2.std() + 1e-8)
 
     # Policy loss
@@ -18,13 +16,6 @@ def ppo_loss(agent, mb_obs, mb_logprobs, mb_actions, mb_values, mb_returns, mb_a
 
     # Value loss
     newvalue = newvalue.view(-1)
-    # if clip_vloss:
-    #     v_loss_unclipped = (newvalue - mb_returns) ** 2
-    #     v_clipped = mb_values + torch.clamp(newvalue - mb_values, -clip_coef, clip_coef, )
-    #     v_loss_clipped = (v_clipped - mb_returns) ** 2
-    #     v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
-    #     v_loss = 0.5 * v_loss_max.mean()
-    # else:
     v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()
 
     entropy_loss = entropy.mean()
