@@ -1,7 +1,5 @@
 import numpy as np
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 def layer_init_orthogonal(layer, std=np.sqrt(2), bias_const=0.0):
@@ -62,7 +60,7 @@ class ResidualBlock(nn.Module):
 
 
 class ConvSequence(nn.Module):
-    def __init__(self, input_shape, out_channels, scale, use_layer_init_normed=False, activation='relu',):
+    def __init__(self, input_shape, out_channels, scale, use_layer_init_normed=False, activation='relu', ):
         super().__init__()
         self._input_shape = input_shape
         self._out_channels = out_channels
