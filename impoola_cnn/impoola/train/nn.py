@@ -28,6 +28,17 @@ def encoder_factory(encoder_type, *args, **kwargs):
         model = ImpalaCNN(*args, **kwargs)
         out_features = kwargs['out_features']
         return model, out_features
+    elif encoder_type == 'impala_new':
+        micro_p = kwargs.pop('micro_dropout_p', 0.03)
+        gauss_std = kwargs.pop('gauss_std', 1e-3)
+        force_head_silu = kwargs.pop('force_head_silu', True)
+        base_model = ImpalaCNN(*args, **kwargs)
+        model = ImpalaCNNWithTinyReg(base_model, micro_dropout_p=micro_p, gauss_std=gauss_std,
+                                     force_head_silu=force_head_silu)
+        out_features = kwargs['out_features']
+        return model, out_features
+    else:
+        raise NotImplementedError
 
 
 # taken from https://github.com/AIcrowd/neurips2020-procgen-starter-kit/blob/142d09586d2272a17f44481a115c4bd817cf6a94/models/impala_cnn_torch.py
@@ -153,3 +164,101 @@ class ImpalaCNN(nn.Module):
 
     def get_output_shape(self):
         return self.network[-2].out_features
+
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+
+class TrainOnlyMicroDropoutTiny(nn.Module):
+    def __init__(self, p=0.03):
+        super().__init__()
+        self.dropout = nn.Dropout(p)
+
+    def forward(self, x):
+        if self.training:
+            return self.dropout(x)
+        return x
+
+
+class TrainOnlyGaussianNoiseTiny(nn.Module):
+    def __init__(self, std=1e-3):
+        super().__init__()
+        self.std = std
+
+    def forward(self, x):
+        if self.training and self.std > 0:
+            return x + torch.randn_like(x) * self.std
+        return x
+
+
+class HeadActivationSiLU(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        return self.act(x)
+
+
+class EarlyActivationReLU(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.act = nn.ReLU()
+
+    def forward(self, x):
+        return self.act(x)
+
+
+class ImpalaCNNWithTinyReg(nn.Module):
+    def __init__(self, base_encoder: nn.Module, micro_dropout_p=0.03, gauss_std=1e-3, force_head_silu=True):
+        super().__init__()
+        self.base = base_encoder
+        self.after_pool_dropout = TrainOnlyMicroDropoutTiny(p=micro_dropout_p)
+        self.after_pool_noise = TrainOnlyGaussianNoiseTiny(std=gauss_std)
+        self.after_linear_dropout = TrainOnlyMicroDropoutTiny(p=micro_dropout_p)
+        self.after_linear_noise = TrainOnlyGaussianNoiseTiny(std=gauss_std)
+        self.force_head_silu = force_head_silu
+        self._wire()
+
+    def _wire(self):
+        if not hasattr(self.base, "network"):
+            raise AttributeError("base_encoder is expected to have attribute .network (nn.Sequential)")
+        net = self.base.network
+        if not isinstance(net, nn.Sequential):
+            raise TypeError("base_encoder.network must be nn.Sequential")
+        pool_idx = None
+        for i, m in enumerate(net):
+            if isinstance(m, nn.AdaptiveAvgPool2d):
+                pool_idx = i
+                break
+        if pool_idx is None:
+            raise RuntimeError("Could not find AdaptiveAvgPool2d in base_encoder.network")
+        modules = list(net)
+        insert_pos = pool_idx + 1
+        modules.insert(insert_pos, self.after_pool_dropout)
+        modules.insert(insert_pos + 1, self.after_pool_noise)
+        last_linear_idx = None
+        for i, m in enumerate(modules):
+            if isinstance(m, nn.Linear):
+                last_linear_idx = i
+        if last_linear_idx is None:
+            raise RuntimeError("Could not find Linear head in base_encoder.network")
+        insert_pos2 = last_linear_idx + 1
+        modules.insert(insert_pos2, self.after_linear_dropout)
+        modules.insert(insert_pos2 + 1, self.after_linear_noise)
+        if self.force_head_silu:
+            if insert_pos2 + 2 < len(modules):
+                modules[insert_pos2 + 2] = HeadActivationSiLU()
+        self.base.network = nn.Sequential(*modules)
+
+    def forward(self, x):
+        return self.base(x)
+
+    def get_output_shape(self):
+        if hasattr(self.base, "get_output_shape"):
+            return self.base.get_output_shape()
+        if isinstance(self.base.network[-2], nn.Linear):
+            return self.base.network[-2].out_features
+        raise AttributeError("Cannot infer output shape from base encoder")

@@ -2,12 +2,10 @@ import argparse
 import os
 import numpy as np
 import torch
-
 from impoola_cnn.impoola.maker.make_env import make_procgen_env
-from impoola_cnn.impoola.train.agents import PPOAgent
+from impoola_cnn.impoola.train.agents import PPOAgent, Vtrace
 from impoola_cnn.impoola.utils.save_load import load_checkpoint
 from impoola_cnn.impoola.utils.utils import get_device
-
 
 def print_run_config(args, device, model_found, extra=None):
     line = "=" * 80
@@ -27,6 +25,7 @@ def print_run_config(args, device, model_found, extra=None):
     print(f"Activation            : {args.activation}")
     print(f"Deterministic         : {args.deterministic}")
     print(f"Checkpoint            : {args.checkpoint or '(none)'}")
+    print(f"Agent                 : {args.agent}")
     print(f"Device                : {device}")
     if extra:
         for k, v in extra.items():
@@ -42,6 +41,23 @@ def print_run_config(args, device, model_found, extra=None):
         print("=" * 80)
     print(line)
 
+def build_agent(args, envs, device):
+    common = dict(
+        encoder_type=args.encoder_type,
+        envs=envs,
+        width_scale=args.scale,
+        out_features=args.latent_space_dim,
+        cnn_filters=tuple(args.cnn_filters),
+        activation=args.activation,
+        use_layer_init_normed=False
+    )
+    if args.agent.lower() == "ppo":
+        agent = PPOAgent(**common).to(device)
+    elif args.agent.lower() == "vtrace":
+        agent = Vtrace(**common).to(device)
+    else:
+        raise ValueError("agent must be PPO or Vtrace")
+    return agent
 
 def main():
     parser = argparse.ArgumentParser()
@@ -56,11 +72,10 @@ def main():
     parser.add_argument("--cnn_filters", type=int, nargs="+", default=[16, 32, 32])
     parser.add_argument("--activation", type=str, default="relu")
     parser.add_argument("--deterministic", action="store_true")
+    parser.add_argument("--agent", type=str, default="Vtrace")
     args = parser.parse_args()
 
-    class TempArgs:
-        pass
-
+    class TempArgs: pass
     targs = TempArgs()
     targs.env_id = args.env_id
     targs.num_envs = args.num_envs
@@ -76,15 +91,7 @@ def main():
     )
 
     device = get_device()
-    agent = PPOAgent(
-        encoder_type=args.encoder_type,
-        envs=envs,
-        width_scale=args.scale,
-        out_features=args.latent_space_dim,
-        cnn_filters=tuple(args.cnn_filters),
-        activation=args.activation,
-        use_layer_init_normed=False
-    ).to(device)
+    agent = build_agent(args, envs, device)
 
     model_found = bool(args.checkpoint) and os.path.isfile(args.checkpoint)
     if model_found:
@@ -99,7 +106,7 @@ def main():
     )
 
     obs, _ = envs.reset()
-    obs = torch.tensor(obs, device=device)
+    obs = torch.as_tensor(obs, device=device)
     done = np.zeros(args.num_envs, dtype=bool)
     ep_count = 0
 
@@ -107,8 +114,8 @@ def main():
         while ep_count < args.episodes:
             if model_found:
                 if args.deterministic:
-                    logits, _ = agent.forward(obs)
-                    action = logits.argmax(dim=1)
+                    pi, _ = agent.get_pi_and_value(obs)
+                    action = pi.mode
                 else:
                     action, _, _, _, _ = agent.get_action_and_value(obs)
             else:
@@ -116,12 +123,11 @@ def main():
 
             next_obs, reward, terminated, truncated, info = envs.step(action.detach().cpu().numpy())
             done = np.logical_or(terminated, truncated)
-            obs = torch.tensor(next_obs, device=device)
+            obs = torch.as_tensor(next_obs, device=device)
             if done.any():
                 ep_count += int(done.sum())
 
     envs.close()
-
 
 if __name__ == "__main__":
     main()
