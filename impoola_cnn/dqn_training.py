@@ -71,6 +71,9 @@ class Args:
     redo_tau: float = 0.025
     redo_interval: int = 2000
 
+    p_augment: float = 0.0
+    micro_dropout_p: float = 0.0
+
     num_iterations = total_timesteps // num_envs // train_frequency
     run_name = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     output_dir = os.path.join("outputs", run_name)
@@ -128,7 +131,8 @@ if __name__ == "__main__":
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
-
+        p_augment=args.p_augment,
+        micro_dropout_p=args.micro_dropout_p
     ).to(device)
 
     target_network = DQNAgent(
@@ -137,7 +141,8 @@ if __name__ == "__main__":
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
-
+        p_augment=args.p_augment,
+        micro_dropout_p=args.micro_dropout_p
     ).to(device)
 
     with torch.no_grad():

@@ -11,7 +11,8 @@ class DQNAgent(nn.Module):
             envs,
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
-
+            p_augment=0.0,
+            micro_dropout_p=0.0
     ):
         super().__init__()
 
@@ -19,9 +20,13 @@ class DQNAgent(nn.Module):
         encoder, out_features = encoder_factory(
             encoder_type=encoder_type,
             envs=envs,
-            width_scale=width_scale, out_features=out_features, cnn_filters=cnn_filters, activation=activation,
+            width_scale=width_scale,
+            out_features=out_features,
+            cnn_filters=cnn_filters,
+            activation=activation,
             use_layer_init_normed=use_layer_init_normed,
-
+            p_augment=p_augment,
+            micro_dropout_p=micro_dropout_p
         )
         self.encoder = encoder
         self.out_features = out_features
@@ -46,7 +51,8 @@ class ActorCriticAgent(nn.Module):
             envs,
             width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
             use_layer_init_normed=False,
-
+            p_augment=0.0,
+            micro_dropout_p=0.0
     ):
         super().__init__()
 
@@ -54,8 +60,13 @@ class ActorCriticAgent(nn.Module):
         encoder, out_features = encoder_factory(
             encoder_type=encoder_type,
             envs=envs,
-            width_scale=width_scale, out_features=out_features, cnn_filters=cnn_filters, activation=activation,
+            width_scale=width_scale,
+            out_features=out_features,
+            cnn_filters=cnn_filters,
+            activation=activation,
             use_layer_init_normed=use_layer_init_normed,
+            p_augment=p_augment,
+            micro_dropout_p=micro_dropout_p
         )
         self.encoder = encoder
         self.out_features = out_features

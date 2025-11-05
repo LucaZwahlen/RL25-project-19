@@ -35,25 +35,25 @@ class Args:
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
-    learning_rate: float = 4.0e-4
+    learning_rate: float = 8.0e-4
     anneal_lr: bool = False
 
     num_envs: int = 90
     unroll_length: int = 20
     gamma: float = 0.99
 
-    ent_coef: float = 0.02
-    vf_coef: float = 0.25
+    ent_coef: float = 0.01
+    vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 
-    vtrace_rho_bar: float = 1.5
-    vtrace_c_bar: float = 1
+    vtrace_rho_bar: float = 1.0
+    vtrace_c_bar: float = 2.0
     actor_batches_per_update: int = 1
 
     encoder_type: str = "impala_new"  # impala
     scale: int = 2
     pruning_type: str = "Baseline"
-    weight_decay: float = 1e-5
+    weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
     activation: str = 'relu'
@@ -73,6 +73,9 @@ class Args:
 
     run_name = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     output_dir = os.path.join("outputs", run_name)
+
+    p_augment: float = 0.1
+    micro_dropout_p: float = 0.01
 
 
 if __name__ == "__main__":
@@ -121,9 +124,13 @@ if __name__ == "__main__":
     agent = Vtrace(
         encoder_type=args.encoder_type,
         envs=envs,
-        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
+        width_scale=args.scale,
+        out_features=args.latent_space_dim,
+        cnn_filters=args.cnn_filters,
         activation=args.activation,
-        use_layer_init_normed=False
+        use_layer_init_normed=False,
+        p_augment=args.p_augment,
+        micro_dropout_p=args.micro_dropout_p
     ).to(device)
 
     with torch.no_grad():

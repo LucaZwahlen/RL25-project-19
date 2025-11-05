@@ -69,6 +69,9 @@ class Args:
     log_interval: int = 1
     n_datapoints_csv: int = 0
 
+    p_augment: float = 0.0
+    micro_dropout_p: float = 0.0
+
     batch_size = int(num_envs * num_steps)
     minibatch_size = int(batch_size // num_minibatches)
     num_iterations = total_timesteps // batch_size
@@ -124,8 +127,9 @@ if __name__ == "__main__":
         envs=envs,
         width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
-        use_layer_init_normed=False
-
+        use_layer_init_normed=False,
+        p_augment=args.p_augment,
+        micro_dropout_p=args.micro_dropout_p
     ).to(device)
 
     with torch.no_grad():
