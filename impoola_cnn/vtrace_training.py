@@ -70,8 +70,8 @@ class Args:
     minibatch_size = batch_size
     num_iterations = total_timesteps // batch_size
 
-    run_name = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    output_dir = os.path.join("outputs", run_name)
+    run_name: str = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    output_dir: str = os.path.join("outputs", run_name)
 
     p_augment: float = 0.1
     micro_dropout_p: float = 0.01

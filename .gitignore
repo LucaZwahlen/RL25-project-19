@@ -184,3 +184,6 @@ sit/logs/
 venv
 outputs
 
+*.json
+*.csv
+*.pt
