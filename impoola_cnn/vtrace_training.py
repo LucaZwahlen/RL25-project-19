@@ -16,7 +16,7 @@ from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
 from impoola_cnn.impoola.maker.make_env import make_an_env
 from impoola_cnn.impoola.train.agents import Vtrace
 from impoola_cnn.impoola.train.train_vtrace_agent import train_vtrace_agent
-from impoola_cnn.impoola.utils.csv_logging import init_files
+from impoola_cnn.impoola.utils.csv_logging import Logger
 from impoola_cnn.impoola.utils.save_load import save_checkpoint
 from impoola_cnn.impoola.utils.utils import get_device
 
@@ -80,7 +80,7 @@ class Args:
 if __name__ == "__main__":
 
     args = tyro.cli(Args)
-    init_files(args)
+    logger = Logger(args)
 
     global progcen_hns
     if args.distribution_mode == "easy":
@@ -152,13 +152,11 @@ if __name__ == "__main__":
         lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
         optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
 
-    envs, agent, global_step, b_obs = train_vtrace_agent(args, envs, agent, optimizer, device)
+    envs, agent, global_step, b_obs = train_vtrace_agent(args, logger, envs, agent, optimizer, device)
 
     save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, "checkpoint_final")
 
     envs.close()
-
-    agent = agent.to(device)
-    eval_args = deepcopy(args)
+    logger.close()
 
     print(f"All training and evaluation complete! Files saved to: {args.output_dir}")

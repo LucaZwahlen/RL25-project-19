@@ -68,7 +68,7 @@ class ProcgenToGymNewAPI(gym.Wrapper):
         return ob, reward, terminated, truncated, dict_info
 
 
-def _make_procgen_env(num_envs, env_id, num_levels, rand_seed, render=False, distribution_mode="easy"):
+def _make_procgen_env(num_envs, env_id, num_levels, start_level, rand_seed, render=False, distribution_mode="easy"):
     # print(f"Using track: {env_track} (num_levels: {num_levels})")
 
     # if distribution_mode != "easy" and env_id not in ["coinrun", "ninja", "climber", "fruitbot", "caveflyer"]:
@@ -78,7 +78,7 @@ def _make_procgen_env(num_envs, env_id, num_levels, rand_seed, render=False, dis
         num=num_envs,
         env_name=env_id,
         num_levels=num_levels,
-        start_level=0,
+        start_level=start_level,
         # Note: Start_level has no influence when num_levels=0
         distribution_mode=distribution_mode,
         rand_seed=rand_seed,
@@ -103,12 +103,19 @@ def _make_procgen_env(num_envs, env_id, num_levels, rand_seed, render=False, dis
 
 
 def make_procgen_env(args, full_distribution=False, normalize_reward=False, rand_seed=None, render=False,
-                     distribution_mode="easy"):
+                     distribution_mode="easy", num_levels_override=None, start_level_override=None):
     # Num levels is 200 for easy games and 1000 for hard games when running in general track
-    num_levels = 200 if distribution_mode == "easy" else 500
+    start_level = 0
 
+    num_levels = 200 if distribution_mode == "easy" else 500
     num_levels = 0 if full_distribution else num_levels
-    envs = _make_procgen_env(args.num_envs, args.env_id, num_levels, rand_seed, render, distribution_mode)
+
+    if num_levels_override is not None:
+        num_levels = num_levels_override
+    if start_level_override is not None:
+        start_level = start_level_override
+
+    envs = _make_procgen_env(args.num_envs, args.env_id, num_levels, start_level, rand_seed, render, distribution_mode)
 
     envs = gym.wrappers.RecordEpisodeStatistics(envs)
 
