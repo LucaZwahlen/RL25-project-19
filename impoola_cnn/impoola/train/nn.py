@@ -172,16 +172,6 @@ class TrainOnlyBlurNoise(nn.Module):
         return y
 
 
-
-class HeadActivationSiLU(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.act = nn.SiLU()
-
-    def forward(self, x):
-        return self.act(x)
-
-
 class EarlyActivationReLU(nn.Module):
     def __init__(self):
         super().__init__()
@@ -211,9 +201,9 @@ class ImpalaCnnReg(nn.Module):
                               p_augment=p_augment)
         self.after_pool_dropout = TrainOnlyMicroDropout(p=micro_dropout_p)
         self.after_linear_dropout = TrainOnlyMicroDropout(p=micro_dropout_p)
-        self._wire(activation)
+        self._wire()
 
-    def _wire(self, head_activation):
+    def _wire(self):
         net = self.base.network
         modules = list(net)
         pool_idx = None
@@ -233,8 +223,6 @@ class ImpalaCnnReg(nn.Module):
         if last_linear_idx is not None:
             insert_pos2 = last_linear_idx + 1
             modules.insert(insert_pos2, self.after_linear_dropout)
-            if insert_pos2 + 1 < len(modules):
-                modules[insert_pos2 + 1] = HeadActivationSiLU() if head_activation != 'silu' else modules[insert_pos2 + 1]
         self.base.network = nn.Sequential(*modules)
 
     def forward(self, x):

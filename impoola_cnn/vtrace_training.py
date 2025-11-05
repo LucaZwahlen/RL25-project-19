@@ -35,7 +35,7 @@ class Args:
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
-    learning_rate: float = 8.0e-4
+    learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
     num_envs: int = 90
@@ -65,7 +65,6 @@ class Args:
     log_interval: int = 1
 
     n_datapoints_csv: int = 500
-    use_augmentation: bool = False
 
     batch_size = int(num_envs * unroll_length)
     minibatch_size = batch_size

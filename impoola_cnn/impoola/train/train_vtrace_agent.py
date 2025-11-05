@@ -8,15 +8,12 @@ import torch.nn as nn
 from tqdm import trange
 
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
-from impoola_cnn.impoola.utils.augmentation import Augmentation
 from impoola_cnn.impoola.utils.csv_logging import log_sit_style_csv
 from impoola_cnn.impoola.utils.evaluate_test_performance import evaluate_test_performance
 
 
 def train_vtrace_agent(args, envs, agent, optimizer, device):
     training_episode_rewards = deque(maxlen=100)
-
-    augment = Augmentation()
 
     T = args.unroll_length
     N = args.num_envs
@@ -42,8 +39,6 @@ def train_vtrace_agent(args, envs, agent, optimizer, device):
 
     next_obs, _ = envs.reset()
     next_obs = torch.tensor(next_obs, device=device)
-    if args.use_augmentation:
-        next_obs = augment(next_obs)
 
     next_done = torch.zeros(N, device=device, dtype=torch.bool)
 
