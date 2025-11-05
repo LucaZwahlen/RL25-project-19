@@ -1,4 +1,5 @@
-import subprocess, sys
+import subprocess
+import sys
 
 p_augments = [0.00, 0.05, 0.10]
 micro_dropouts = [0.0, 0.005, 0.01, 0.1]
