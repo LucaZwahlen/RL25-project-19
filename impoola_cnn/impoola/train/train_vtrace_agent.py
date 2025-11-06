@@ -8,23 +8,17 @@ import torch.nn as nn
 from tqdm import trange
 
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
-from impoola_cnn.impoola.utils.csv_logging import Logger
+from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
+                                                   Logger)
+from impoola_cnn.impoola.utils.environment_knowledge import \
+    try_get_optimal_train_path_length
 from impoola_cnn.impoola.utils.evaluate_test_performance import \
     evaluate_test_performance
 from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
+from impoola_cnn.impoola.utils.success_rewards import get_success_reward
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
-
-    noop_indices = get_noop_indices(args.env_id)
-    noop_mask = torch.zeros((envs.single_action_space.n,), dtype=torch.bool, device=device)
-    for idx in noop_indices:
-        noop_mask[idx] = 1
-
-    training_episode_rewards = deque(maxlen=100)
-    training_episode_level_seeds = deque(maxlen=100)
-    training_num_ticks = deque(maxlen=100)
-    training_num_steps = deque(maxlen=100)
 
     T = args.unroll_length
     N = args.num_envs
@@ -43,8 +37,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
     learning_rate = optimizer.param_groups[0]["lr"].clone()
     max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
 
-    ticks = torch.zeros((N,), device=device)
-    steps = torch.zeros((N,), device=device)
+    episodeQueueCalculator = EpisodeQueueCalculator(True, 100, args.env_id, N, args.distribution_mode, device)
 
     global_step = 0
 
@@ -80,21 +73,10 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             next_obs = torch.tensor(next_obs, device=device)
             next_done = torch.tensor(next_done, device=device, dtype=torch.bool)
 
-            ticks += 1
-            action_op_mask = ~(noop_mask[action])
-            steps += action_op_mask
+            episodeQueueCalculator.update(action, rewards[step])
 
             if "_episode" in info.keys():
-                completed_episodes = info["episode"]["r"][info["_episode"]]
-                training_episode_rewards.extend(completed_episodes)
-                completed_levels_prev_seeds = np.array(info['prev_level_seed'])[info["_episode"]]
-                training_episode_level_seeds.extend(completed_levels_prev_seeds)
-                completed_ticks = ticks[info["_episode"]].cpu().numpy()
-                training_num_ticks.extend(completed_ticks)
-                completed_steps = steps[info["_episode"]].cpu().numpy()
-                training_num_steps.extend(completed_steps)
-                ticks[info["_episode"]] = 0
-                steps[info["_episode"]] = 0
+                episodeQueueCalculator.extend(info)
 
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
         T_, N_ = T, N
@@ -146,32 +128,31 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             iteration_end_time = time.time()
             cumulative_training_time += (iteration_end_time - iteration_start_time)
 
-            test_mean, test_median, test_ticks, test_steps, test_levels = evaluate_test_performance(agent, args, device)
+            test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = evaluate_test_performance(
+                agent, args, device)
 
-            train_mean_reward = np.mean(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
-            train_median_reward = np.median(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
-            train_ticks = np.mean(training_num_ticks) if len(training_num_ticks) > 0 else 0.0
-            train_steps = np.mean(training_num_steps) if len(training_num_steps) > 0 else 0.0
-            train_levels = list(training_episode_level_seeds)
-            train_count = len(training_episode_rewards)
-            test_count = len(test_levels)
+            train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
 
             logger.log(
                 avg_policy_loss,
                 avg_entropy_loss,
                 avg_value_loss,
-                test_mean,
-                test_median,
+                test_mean_reward,
+                test_median_reward,
                 test_levels,
                 test_count,
                 test_ticks,
                 test_steps,
+                test_success,
+                test_spl,
                 train_mean_reward,
                 train_median_reward,
                 train_levels,
                 train_count,
                 train_ticks,
                 train_steps,
+                train_success,
+                train_spl,
                 iteration,
                 global_step,
                 cumulative_training_time

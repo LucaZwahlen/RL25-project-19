@@ -7,14 +7,17 @@ import torch
 import torch.nn as nn
 from tqdm import trange
 
-from impoola_cnn.impoola.utils.csv_logging import _evaluate
+from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
+                                                   Logger)
+from impoola_cnn.impoola.utils.evaluate_test_performance import \
+    evaluate_test_performance
 
 
-def train_ppo_agent(args, envs, agent, optimizer, device):
+def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
     """ Train the PPO agent """
 
     # Track training episode statistics
-    training_episode_rewards = deque(maxlen=100)
+    episodeQueueCalculator = EpisodeQueueCalculator(True, 100, args.env_id, args.num_envs, args.distribution_mode, device)
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape, device=device)
@@ -77,10 +80,11 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
             next_obs = torch.tensor(next_obs, device=device)
             next_done = torch.tensor(next_done, device=device, dtype=torch.bool)
 
+            episodeQueueCalculator.update(action, rewards[step])
+
             # Collect training episode rewards
             if "_episode" in info.keys():
-                completed_episodes = info["episode"]["r"][info["_episode"]]
-                training_episode_rewards.extend(completed_episodes)
+                episodeQueueCalculator.extend(info)
 
         # flatten the batch
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
@@ -135,23 +139,46 @@ def train_ppo_agent(args, envs, agent, optimizer, device):
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
 
-            eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
-            do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)
-            if do_eval:
-                iteration_start_time, cumulative_training_time = _evaluate(
-                    total_policy_loss,
-                    total_value_loss,
-                    total_entropy_loss,
-                    n_updates,
-                    iteration,
-                    global_step,
-                    training_episode_rewards,
-                    agent,
-                    args,
-                    device,
-                    args.output_dir,
-                    iteration_start_time,
-                    cumulative_training_time,
-                )
+        eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
+        do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)
+        if do_eval:
+            avg_policy_loss = total_policy_loss / n_updates
+            avg_value_loss = total_value_loss / n_updates
+            avg_entropy_loss = total_entropy_loss / n_updates
+
+            iteration_end_time = time.time()
+            cumulative_training_time += (iteration_end_time - iteration_start_time)
+
+            test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = evaluate_test_performance(
+                agent, args, device)
+
+            train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
+
+            logger.log(
+                avg_policy_loss,
+                avg_entropy_loss,
+                avg_value_loss,
+                test_mean_reward,
+                test_median_reward,
+                test_levels,
+                test_count,
+                test_ticks,
+                test_steps,
+                test_success,
+                test_spl,
+                train_mean_reward,
+                train_median_reward,
+                train_levels,
+                train_count,
+                train_ticks,
+                train_steps,
+                train_success,
+                train_spl,
+                iteration,
+                global_step,
+                cumulative_training_time
+            )
+
+            iteration_start_time = time.time()
 
     return envs, agent, global_step, b_obs

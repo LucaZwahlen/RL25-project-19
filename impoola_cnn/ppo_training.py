@@ -17,7 +17,7 @@ from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
 from impoola_cnn.impoola.maker.make_env import make_an_env
 from impoola_cnn.impoola.train.agents import PPOAgent
 from impoola_cnn.impoola.train.train_ppo_agent import train_ppo_agent
-from impoola_cnn.impoola.utils.csv_logging import init_files
+from impoola_cnn.impoola.utils.csv_logging import Logger
 from impoola_cnn.impoola.utils.save_load import save_checkpoint
 from impoola_cnn.impoola.utils.utils import get_device
 
@@ -67,7 +67,7 @@ class Args:
     redo_interval: int = 100
 
     log_interval: int = 1
-    n_datapoints_csv: int = 0
+    n_datapoints_csv: int = 500
 
     p_augment: float = 0.0
     micro_dropout_p: float = 0.0
@@ -82,7 +82,7 @@ class Args:
 if __name__ == "__main__":
 
     args = tyro.cli(Args)
-    init_files(args)
+    logger = Logger(args)
 
     global progcen_hns
     if args.distribution_mode == "easy":
@@ -153,8 +153,9 @@ if __name__ == "__main__":
         lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
         optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
 
-    envs, agent, global_step, b_obs = train_ppo_agent(args, envs, agent, optimizer, device)
+    envs, agent, global_step, b_obs = train_ppo_agent(args, logger, envs, agent, optimizer, device)
     envs.close()
+    logger.close()
 
     agent = agent.to(device)
 

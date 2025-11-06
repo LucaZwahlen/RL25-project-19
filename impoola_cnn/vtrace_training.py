@@ -50,7 +50,7 @@ class Args:
     vtrace_c_bar: float = 2.0
     actor_batches_per_update: int = 1
 
-    encoder_type: str = "impala_new"  # impala
+    encoder_type: str = "impala"  # impala
     scale: int = 2
     pruning_type: str = "Baseline"
     weight_decay: float = 0.0e-5
@@ -73,8 +73,8 @@ class Args:
     run_name: str = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     output_dir: str = os.path.join("outputs", run_name)
 
-    p_augment: float = 0.1
-    micro_dropout_p: float = 0.01
+    p_augment: float = 0.0
+    micro_dropout_p: float = 0.00
 
 
 if __name__ == "__main__":
