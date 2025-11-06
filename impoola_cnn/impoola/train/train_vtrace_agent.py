@@ -37,7 +37,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
     learning_rate = optimizer.param_groups[0]["lr"].clone()
     max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
 
-    episodeQueueCalculator = EpisodeQueueCalculator(True, 100, args.env_id, N, args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator(True, args.normalize_reward, 100, args.env_id, N, args.distribution_mode, device)
 
     global_step = 0
 

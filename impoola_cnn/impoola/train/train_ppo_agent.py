@@ -17,7 +17,7 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
     """ Train the PPO agent """
 
     # Track training episode statistics
-    episodeQueueCalculator = EpisodeQueueCalculator(True, 100, args.env_id, args.num_envs, args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator(True, args.normalize_reward, 100, args.env_id, args.num_envs, args.distribution_mode, device)
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape, device=device)

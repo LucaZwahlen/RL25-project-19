@@ -13,12 +13,12 @@ from impoola_cnn.impoola.utils.environment_knowledge import (
 from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
 from impoola_cnn.impoola.utils.success_rewards import get_success_reward
 
-EPSILON = 1e-7
+EPSILON = 0.25
 
 
 class EpisodeQueueCalculator:
-    def __init__(self, is_train, queue_len, env_id, num_envs, distribution_mode, device):
-
+    def __init__(self, is_train, normalize_reward, queue_len, env_id, num_envs, distribution_mode, device):
+        self.normalize_reward = normalize_reward
         self.optimal_path_length = try_get_optimal_train_path_length(env_id, distribution_mode) if is_train else try_get_optimal_test_path_length(env_id)
 
         self.ticks = torch.zeros((num_envs,), device=device)
@@ -48,10 +48,12 @@ class EpisodeQueueCalculator:
             self.noop_mask[idx] = 1
 
     def update(self, action, rewards):
+        # here we assume that when normalizing, the completed reward is large enough that it will go to the clamp max (10.0)
+        success_reward_fixed = torch.tensor(10.0) if self.normalize_reward else self.success_reward
         self.ticks += 1
         action_op_mask = ~(self.noop_mask[action])
         self.steps += action_op_mask
-        self.success = self.success | (torch.abs(rewards - self.success_reward) < EPSILON)
+        self.success = self.success | (rewards >= success_reward_fixed - EPSILON)
 
     def extend(self, info):
         completed_episodes = info["episode"]["r"][info["_episode"]]
