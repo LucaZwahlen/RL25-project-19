@@ -38,7 +38,7 @@ class Args:
     learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 90
+    num_envs: int = 96
     unroll_length: int = 20
     gamma: float = 0.99
 
