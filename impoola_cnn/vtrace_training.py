@@ -40,7 +40,7 @@ class Args:
     learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 96
+    num_envs: int = 80
     unroll_length: int = 20
     gamma: float = 0.99
 
@@ -72,9 +72,8 @@ class Args:
 
     n_datapoints_csv: int = 500
 
-    update_epochs: int = 3
+    update_epochs: int = 2
     batch_size = int(num_envs * unroll_length)
-    minibatch_size = batch_size
     num_iterations = total_timesteps // batch_size
 
     run_name: str = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -90,9 +89,6 @@ class Args:
 
     clip_coef: float = 0.2
     clip_vloss: bool = True
-
-    num_minibatches: int = 8
-    minibatch_size = int(batch_size // num_minibatches)
 
 
 if __name__ == "__main__":
