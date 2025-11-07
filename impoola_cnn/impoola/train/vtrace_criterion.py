@@ -32,37 +32,3 @@ def compute_vtrace_targets(rewards, dones, values, bootstrap_value, behavior_log
         pg_adv = rho_bar_t * (rewards + gamma * v_tp1_pg * not_done - v)
     return vs, pg_adv
 
-
-def vtrace_loss(agent, mb_obs, mb_actions, mb_behavior_logits, mb_values, mb_rewards, mb_dones, mb_bootstrap_value,
-                gamma, rho_bar, c_bar, ent_coef, vf_coef, amp=False):
-    amp_ctx = torch.autocast(device_type='cuda', dtype=torch.bfloat16) if (amp and mb_obs.is_cuda) else nullcontext()
-    with amp_ctx:
-        pi, values_new = agent.get_pi_and_value(mb_obs)
-        target_logits = pi.logits
-        values_new = values_new.view_as(mb_values)
-        vs, pg_adv = compute_vtrace_targets(
-            rewards=mb_rewards,
-            dones=mb_dones,
-            values=mb_values,
-            bootstrap_value=mb_bootstrap_value,
-            behavior_logits=mb_behavior_logits,
-            target_logits=target_logits.view_as(mb_behavior_logits),
-            gamma=gamma,
-            rho_bar=rho_bar,
-            c_bar=c_bar,
-            actions=mb_actions.view(-1)
-        )
-        dist = Categorical(logits=target_logits.view(-1, target_logits.shape[-1]))
-        logp = dist.log_prob(mb_actions.view(-1)).view_as(pg_adv)
-        entropy = dist.entropy().view_as(pg_adv)
-        policy_loss = -(pg_adv.detach() * logp).mean()
-        value_loss = 0.5 * (values_new - vs.detach()).pow(2).mean()
-        entropy_loss = entropy.mean()
-        loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
-    return loss, policy_loss, value_loss, entropy_loss
-
-
-def vtrace_unrolls(agent, next_done, next_obs, rewards, dones, values, behavior_logits, device, unroll_length):
-    with torch.no_grad():
-        bootstrap_value = agent.get_pi_and_value(next_obs)[1].reshape(-1)
-    return bootstrap_value

@@ -1,8 +1,8 @@
 import os
 import random
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 import gym
 import numpy as np
@@ -40,13 +40,14 @@ class Args:
     learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 90
+    num_envs: int = 96
     unroll_length: int = 20
     gamma: float = 0.99
 
     ent_coef: float = 0.01
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
+    target_kl: Optional[float] = None
 
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
@@ -75,8 +76,13 @@ class Args:
     run_name: str = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     output_dir: str = os.path.join("outputs", run_name)
 
-    p_augment: float = 0.1
-    micro_dropout_p: float = 0.01
+    p_augment: float = 0.0
+    micro_dropout_p: float = 0.0
+
+    drac_lambda_v: float = 1
+    drac_lambda_pi: float = 0.1
+    drac_vflip: bool = True
+    drac_hflip: bool = True
 
 
 if __name__ == "__main__":
