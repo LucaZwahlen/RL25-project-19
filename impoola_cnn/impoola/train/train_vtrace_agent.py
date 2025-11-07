@@ -49,10 +49,6 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
 
     next_done = torch.zeros(N, device=device, dtype=torch.bool)
 
-    if args.use_ucb:
-        gts = GaussianThompsonSampling(param_values=args.ucb_actor_batches_candidates, init_mean=0., init_std=1.,
-                                       window_size=args.ucb_window_length)
-
     for iteration in trange(1, args.num_iterations + 1):
 
         if args.anneal_lr:
@@ -166,9 +162,6 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         loss.backward()
         nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
         optimizer.step()
-
-        if args.use_ucb:
-            gts.update_distribution(rewards)
 
         eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
         do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)

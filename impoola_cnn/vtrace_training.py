@@ -77,7 +77,7 @@ class Args:
     p_augment: float = 0.0
     micro_dropout_p: float = 0.0
 
-    drac_lambda_v: float = 0.5
+    drac_lambda_v: float = 1
     drac_lambda_pi: float = 0.1
     drac_vflip: bool = True
     drac_hflip: bool = True
