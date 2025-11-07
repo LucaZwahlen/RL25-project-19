@@ -86,7 +86,6 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         flat_pg_adv = pg_adv.view(T_ * N_)
         flat_vs = vs.view(T_ * N_)
         flat_behavior_logits = behavior_logits.view(T_ * N_, -1)
-        B = T_ * N_
 
         total_policy_loss = 0.0
         total_value_loss = 0.0

@@ -16,7 +16,7 @@ def try_load_file(base_name: str, env_name: str, seed: int, min_lenght: int):
             print(f"Warning: loaded data from {filename} is too short (length {len(data)}), expected at least {min_lenght}. Using backup.")
             return None
     except FileNotFoundError:
-        print(f"Warning: file {filename} not found. Using backup.")
+        # print(f"Warning: file {filename} not found. Using backup.")
         return None
 
 

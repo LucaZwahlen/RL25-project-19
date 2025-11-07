@@ -40,7 +40,7 @@ class Args:
     learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 80
+    num_envs: int = 96 # 96
     unroll_length: int = 20
     gamma: float = 0.99
 
@@ -61,8 +61,8 @@ class Args:
     pruning_type: str = "Baseline"
     weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
-    cnn_filters: tuple = (16, 32, 32)
-    activation: str = 'relu'
+    cnn_filters: tuple = (8, 16, 24) #(16, 32, 32)
+    activation: str = 'silu' # relu
     rescale_lr_by_scale: bool = True
 
     redo_tau: float = 0.025
@@ -72,7 +72,7 @@ class Args:
 
     n_datapoints_csv: int = 500
 
-    update_epochs: int = 2
+    update_epochs: int = 1 # 2
     batch_size = int(num_envs * unroll_length)
     num_iterations = total_timesteps // batch_size
 
@@ -80,10 +80,10 @@ class Args:
     output_dir: str = os.path.join("outputs", run_name)
 
     p_augment: float = 0.0
-    micro_dropout_p: float = 0.0
+    micro_dropout_p: float = 0.01
 
-    drac_lambda_v: float = 1
-    drac_lambda_pi: float = 0.1
+    drac_lambda_v: float = 5e-4
+    drac_lambda_pi: float = 1e-4
     drac_vflip: bool = True
     drac_hflip: bool = True
 
