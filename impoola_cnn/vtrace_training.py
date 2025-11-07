@@ -45,7 +45,10 @@ class Args:
     ent_coef: float = 0.01
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
+    norm_adv: bool = True
+
     target_kl: Optional[float] = None
+    kl_coef: float = 0.0
 
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
@@ -67,6 +70,7 @@ class Args:
 
     n_datapoints_csv: int = 500
 
+    update_epochs: int = 3
     batch_size = int(num_envs * unroll_length)
     minibatch_size = batch_size
     num_iterations = total_timesteps // batch_size
@@ -81,6 +85,12 @@ class Args:
     drac_lambda_pi: float = 0.1
     drac_vflip: bool = True
     drac_hflip: bool = True
+
+    clip_coef: float = 0.2
+    clip_vloss: bool = True
+
+    num_minibatches: int = 8
+    minibatch_size = int(batch_size // num_minibatches)
 
 
 if __name__ == "__main__":

@@ -40,17 +40,14 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                                                     args.distribution_mode, device)
 
     global_step = 0
-
     cumulative_training_time = 0.0
     iteration_start_time = time.time()
 
     next_obs, _ = envs.reset()
     next_obs = torch.tensor(next_obs, device=device)
-
     next_done = torch.zeros(N, device=device, dtype=torch.bool)
 
     for iteration in trange(1, args.num_iterations + 1):
-
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * learning_rate
@@ -60,7 +57,6 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             global_step += N
             obs[step] = next_obs
             dones[step] = next_done
-
             with torch.no_grad():
                 action, _, ent, value, pi_logits = agent.get_action_and_value(next_obs)
                 values[step] = value.flatten()
@@ -68,13 +64,10 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             actions[step] = action
             next_obs, reward, terminated, truncated, info = envs.step(action.cpu().numpy())
             next_done = np.logical_or(terminated, truncated)
-
             rewards[step] = torch.tensor(reward, device=device).view(-1)
             next_obs = torch.tensor(next_obs, device=device)
             next_done = torch.tensor(next_done, device=device, dtype=torch.bool)
-
             episodeQueueCalculator.update(action, rewards[step])
-
             if "_episode" in info.keys():
                 episodeQueueCalculator.extend(info)
 
@@ -84,10 +77,8 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         with torch.no_grad():
             bootstrap_value = agent.get_pi_and_value(next_obs)[1].squeeze(-1)
 
-        flat_obs = b_obs
-        target_pi, target_values_flat = agent.get_pi_and_value(flat_obs)
+        target_pi, _ = agent.get_pi_and_value(b_obs)
         target_logits_flat = target_pi.logits
-        target_values = target_values_flat.reshape(T_, N_)
         target_logits = target_logits_flat.reshape(T_, N_, -1)
 
         vs, pg_adv = compute_vtrace_targets(
@@ -103,72 +94,96 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             actions=actions.reshape(T_ * N_)
         )
 
-        flat_target_pi = torch.distributions.Categorical(logits=target_logits_flat)
-        logp = flat_target_pi.log_prob(actions.reshape(T_ * N_)).reshape(T_, N_)
-        entropy = flat_target_pi.entropy().reshape(T_, N_)
+        flat_actions = actions.reshape(T_ * N_)
+        flat_pg_adv = pg_adv.reshape(T_ * N_)
+        flat_vs = vs.reshape(T_ * N_)
+        flat_behavior_logits = behavior_logits.reshape(T_ * N_, -1)
 
-        flat_behavior_pi = torch.distributions.Categorical(logits=behavior_logits.reshape(T_ * N_, -1))
-        kl = torch.distributions.kl_divergence(
-            torch.distributions.Categorical(logits=target_logits_flat),
-            flat_behavior_pi
-        ).mean()
+        B = T_ * N_
 
-        pg_adv_used = pg_adv.detach()
-        if args.norm_adv:
-            pg_adv_used = (pg_adv_used - pg_adv_used.mean()) / (pg_adv_used.std() + 1e-8)
+        total_policy_loss = 0.0
+        total_value_loss = 0.0
+        total_entropy_loss = 0.0
+        n_updates = 0
 
-        policy_loss = -(pg_adv_used * logp).mean()
+        for epoch in range(args.update_epochs):
+            b_inds = torch.randperm(B, device=device)
+            for start in range(0, B, args.minibatch_size):
+                end = min(start +args.minibatch_size, B)
+                mb_inds = b_inds[start:end]
 
-        value_error = (target_values - vs.detach())
-        value_loss = 0.5 * (value_error.pow(2)).mean()
-        if args.clip_vloss:
-            clipped_value = values + torch.clamp(vs.detach() - values, -args.clip_coef, args.clip_coef)
-            clipped_value_error = (clipped_value - vs.detach())
-            clipped_v_loss = 0.5 * (clipped_value_error.pow(2)).mean()
-            value_loss = torch.max(value_loss, clipped_v_loss)
+                pi_mb, val_mb = agent.get_pi_and_value(b_obs[mb_inds])
+                logits_mb = pi_mb.logits
+                dist_mb = torch.distributions.Categorical(logits=logits_mb)
 
-        entropy_loss = entropy.mean()
+                logp_mb = dist_mb.log_prob(flat_actions[mb_inds])
+                entropy_mb = dist_mb.entropy()
 
-        loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
-        if args.kl_coef > 0.0:
-            loss = loss + args.kl_coef * kl
+                pg_adv_used_mb = flat_pg_adv[mb_inds].detach()
+                if args.norm_adv:
+                    pg_adv_used_mb = (pg_adv_used_mb - pg_adv_used_mb.mean()) / (pg_adv_used_mb.std() + 1e-8)
 
-        if args.drac_lambda_v > 0.0 or args.drac_lambda_pi > 0.0:
-            drac_value_loss = torch.tensor(0.0, device=device)
-            drac_policy_loss = torch.tensor(0.0, device=device)
+                policy_loss_mb = -(pg_adv_used_mb * logp_mb).mean()
 
-            obs_t = drac_transform(flat_obs)
+                vs_tgt_mb = flat_vs[mb_inds].detach()
+                value_error_mb = (val_mb.squeeze(-1) - vs_tgt_mb)
+                value_loss_mb = 0.5 * value_error_mb.pow(2).mean()
+                if args.clip_vloss:
+                    unclipped = val_mb.squeeze(-1)
+                    clipped_value = unclipped + torch.clamp(vs_tgt_mb - unclipped, -args.clip_coef, args.clip_coef)
+                    clipped_value_error = (clipped_value - vs_tgt_mb)
+                    clipped_v_loss = 0.5 * clipped_value_error.pow(2).mean()
+                    value_loss_mb = torch.max(value_loss_mb, clipped_v_loss)
 
-            if args.drac_lambda_v > 0.0:
-                _, values_t_flat = agent.get_pi_and_value(obs_t)
-                drac_value_loss = (target_values_flat.detach() - values_t_flat).pow(2).mean()
+                entropy_loss_mb = entropy_mb.mean()
 
-            if args.drac_lambda_pi > 0.0:
-                pi_t, _ = agent.get_pi_and_value(obs_t)
-                dist_clean = torch.distributions.Categorical(logits=target_logits_flat)
-                dist_flip = torch.distributions.Categorical(logits=pi_t.logits)
-                logp_clean = dist_clean.log_prob(actions.reshape(T_ * N_))
-                logp_flip = remap_logprobs_for_flip(
-                    dist_flip,
-                    actions.reshape(T_ * N_),
-                    hflip=args.drac_hflip,
-                    vflip=args.drac_vflip
-                )
-                drac_policy_loss = (logp_clean.detach() - logp_flip).pow(2).mean()
+                loss_mb = policy_loss_mb + vf_coef * value_loss_mb - ent_coef * entropy_loss_mb
 
-            loss = + args.drac_lambda_v * drac_value_loss + args.drac_lambda_pi * drac_policy_loss
+                if args.kl_coef > 0.0:
+                    dist_beh_mb = torch.distributions.Categorical(logits=flat_behavior_logits[mb_inds])
+                    kl_mb = torch.distributions.kl_divergence(
+                        torch.distributions.Categorical(logits=logits_mb),
+                        dist_beh_mb
+                    ).mean()
+                    loss_mb = loss_mb + args.kl_coef * kl_mb
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
-        optimizer.step()
+                if args.drac_lambda_v > 0.0 or args.drac_lambda_pi > 0.0:
+                    drac_value_loss_mb = torch.tensor(0.0, device=device)
+                    drac_policy_loss_mb = torch.tensor(0.0, device=device)
+                    obs_t_mb = drac_transform(b_obs[mb_inds])
+                    if args.drac_lambda_v > 0.0:
+                        _, values_t_mb = agent.get_pi_and_value(obs_t_mb)
+                        drac_value_loss_mb = (val_mb.detach() - values_t_mb).pow(2).mean()
+                    if args.drac_lambda_pi > 0.0:
+                        pi_t_mb, _ = agent.get_pi_and_value(obs_t_mb)
+                        dist_clean_mb = torch.distributions.Categorical(logits=logits_mb)
+                        dist_flip_mb = torch.distributions.Categorical(logits=pi_t_mb.logits)
+                        logp_clean_mb = dist_clean_mb.log_prob(flat_actions[mb_inds])
+                        logp_flip_mb = remap_logprobs_for_flip(
+                            dist_flip_mb,
+                            flat_actions[mb_inds],
+                            hflip=args.drac_hflip,
+                            vflip=args.drac_vflip
+                        )
+                        drac_policy_loss_mb = (logp_clean_mb.detach() - logp_flip_mb).pow(2).mean()
+                    loss_mb = loss_mb + args.drac_lambda_v * drac_value_loss_mb + args.drac_lambda_pi * drac_policy_loss_mb
+
+                optimizer.zero_grad(set_to_none=True)
+                loss_mb.backward()
+                nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
+                optimizer.step()
+
+                total_policy_loss += policy_loss_mb.item()
+                total_value_loss += value_loss_mb.item()
+                total_entropy_loss += entropy_loss_mb.item()
+                n_updates += 1
 
         eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
         do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)
         if do_eval:
-            avg_policy_loss = policy_loss.item()
-            avg_value_loss = value_loss.item()
-            avg_entropy_loss = entropy_loss.item()
+            avg_policy_loss = total_policy_loss / max(1, n_updates)
+            avg_value_loss = total_value_loss / max(1, n_updates)
+            avg_entropy_loss = total_entropy_loss / max(1, n_updates)
 
             iteration_end_time = time.time()
             cumulative_training_time += (iteration_end_time - iteration_start_time)
