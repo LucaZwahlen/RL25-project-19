@@ -73,8 +73,20 @@ class Args:
     run_name: str = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
     output_dir: str = os.path.join("outputs", run_name)
 
-    p_augment: float = 0.1
-    micro_dropout_p: float = 0.01
+    p_augment: float = 0.0
+    micro_dropout_p: float = 0.0
+
+    drac_lambda_v: float = 0.5
+    drac_crop_pad: int = 3
+    drac_p_color: float = 0.0
+    drac_brightness: float = 0.05
+    drac_contrast: float = 0.05
+
+    ucb_enabled: bool = False
+    ucb_hp: str = "actor_batches_per_update"
+    ucb_candidates: tuple = (1, 2, 3, 4)
+    ucb_exploration_coef: float = 5.0
+    ucb_window_length: int = 10
 
     use_ucb: bool = False
     ucb_exploration_coef: float = 5.0

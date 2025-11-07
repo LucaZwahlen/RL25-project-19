@@ -8,6 +8,7 @@ import torch.nn as nn
 from tqdm import trange
 
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
+from impoola_cnn.impoola.utils.DRAC import DRACTransformChaserFruitbot
 from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
                                                    Logger)
 from impoola_cnn.impoola.utils.environment_knowledge import \
@@ -20,6 +21,13 @@ from impoola_cnn.impoola.utils.ucb import GaussianThompsonSampling
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
+
+    drac_transform = DRACTransformChaserFruitbot(
+        crop_pad=args.drac_crop_pad,
+        p_color=args.drac_p_color,
+        brightness=args.drac_brightness,
+        contrast=args.drac_contrast
+    ).to(device)
 
     T = args.unroll_length
     N = args.num_envs
@@ -122,7 +130,16 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         value_loss = 0.5 * (target_values - vs.detach()).pow(2).mean()
         entropy_loss = entropy.mean()
 
-        loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
+        drac_value_loss = torch.tensor(0.0, device=device)
+        if args.drac_lambda_v > 0.0:
+            obs_t = drac_transform(flat_obs)
+            _, values_t_flat = agent.get_pi_and_value(obs_t)
+            drac_value_loss = (target_values_flat.detach() - values_t_flat).pow(2).mean()
+
+        loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss \
+               + args.drac_lambda_v * drac_value_loss
+
+        # loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
 
         updates = actor_batches_per_update
         for _ in range(updates):
