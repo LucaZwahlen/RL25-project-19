@@ -11,7 +11,6 @@ from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
                                                    Logger)
 from impoola_cnn.impoola.utils.evaluate_test_performance import \
     evaluate_test_performance
-from impoola_cnn.impoola.utils.ucb import GaussianThompsonSampling
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
