@@ -1,8 +1,8 @@
 import os
 import random
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 import gym
 import numpy as np
@@ -45,6 +45,7 @@ class Args:
     ent_coef: float = 0.01
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
+    target_kl: Optional[float] = None
 
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
@@ -77,21 +78,9 @@ class Args:
     micro_dropout_p: float = 0.0
 
     drac_lambda_v: float = 0.5
-    drac_crop_pad: int = 3
-    drac_p_color: float = 0.0
-    drac_brightness: float = 0.05
-    drac_contrast: float = 0.05
-
-    ucb_enabled: bool = False
-    ucb_hp: str = "actor_batches_per_update"
-    ucb_candidates: tuple = (1, 2, 3, 4)
-    ucb_exploration_coef: float = 5.0
-    ucb_window_length: int = 10
-
-    use_ucb: bool = False
-    ucb_exploration_coef: float = 5.0
-    ucb_window_length: int = 10
-    ucb_actor_batches_candidates: tuple = (5, 3, 2, 1)
+    drac_lambda_pi: float = 0.1
+    drac_vflip: bool = True
+    drac_hflip: bool = True
 
 
 if __name__ == "__main__":

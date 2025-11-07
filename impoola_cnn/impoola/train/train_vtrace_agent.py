@@ -1,6 +1,4 @@
-import os
 import time
-from collections import deque
 
 import numpy as np
 import torch
@@ -8,25 +6,18 @@ import torch.nn as nn
 from tqdm import trange
 
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
-from impoola_cnn.impoola.utils.DRAC import DRACTransformChaserFruitbot
+from impoola_cnn.impoola.utils.DRAC import DRACTransformChaserFruitbot, remap_logprobs_for_flip
 from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
                                                    Logger)
-from impoola_cnn.impoola.utils.environment_knowledge import \
-    try_get_optimal_train_path_length
 from impoola_cnn.impoola.utils.evaluate_test_performance import \
     evaluate_test_performance
-from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
-from impoola_cnn.impoola.utils.success_rewards import get_success_reward
 from impoola_cnn.impoola.utils.ucb import GaussianThompsonSampling
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
-
     drac_transform = DRACTransformChaserFruitbot(
-        crop_pad=args.drac_crop_pad,
-        p_color=args.drac_p_color,
-        brightness=args.drac_brightness,
-        contrast=args.drac_contrast
+        hflip=args.drac_hflip,
+        vflip=args.drac_vflip
     ).to(device)
 
     T = args.unroll_length
@@ -46,7 +37,8 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
     learning_rate = optimizer.param_groups[0]["lr"].clone()
     max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
 
-    episodeQueueCalculator = EpisodeQueueCalculator(True, args.normalize_reward, 100, args.env_id, N, args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator(True, args.normalize_reward, 100, args.env_id, N,
+                                                    args.distribution_mode, device)
 
     global_step = 0
 
@@ -58,17 +50,11 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
 
     next_done = torch.zeros(N, device=device, dtype=torch.bool)
 
-    ucb_obj = None
     if args.use_ucb:
-        gts = GaussianThompsonSampling(param_values=args.ucb_actor_batches_candidates, init_mean=0., init_std=1., window_size=args.ucb_window_length)
+        gts = GaussianThompsonSampling(param_values=args.ucb_actor_batches_candidates, init_mean=0., init_std=1.,
+                                       window_size=args.ucb_window_length)
 
     for iteration in trange(1, args.num_iterations + 1):
-
-        if args.use_ucb:
-            _, chosen = gts.select_param()
-            actor_batches_per_update = int(chosen)
-        else:
-            actor_batches_per_update = int(args.actor_batches_per_update)
 
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
@@ -126,27 +112,61 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         logp = flat_target_pi.log_prob(actions.reshape(T_ * N_)).reshape(T_, N_)
         entropy = flat_target_pi.entropy().reshape(T_, N_)
 
-        policy_loss = -(pg_adv.detach() * logp).mean()
-        value_loss = 0.5 * (target_values - vs.detach()).pow(2).mean()
+        flat_behavior_pi = torch.distributions.Categorical(logits=behavior_logits.reshape(T_ * N_, -1))
+        kl = torch.distributions.kl_divergence(
+            torch.distributions.Categorical(logits=target_logits_flat),
+            flat_behavior_pi
+        ).mean()
+
+        pg_adv_used = pg_adv.detach()
+        if args.norm_adv:
+            pg_adv_used = (pg_adv_used - pg_adv_used.mean()) / (pg_adv_used.std() + 1e-8)
+
+        policy_loss = -(pg_adv_used * logp).mean()
+
+        value_error = (target_values - vs.detach())
+        value_loss = 0.5 * (value_error.pow(2)).mean()
+        if args.clip_vloss:
+            clipped_value = values + torch.clamp(vs.detach() - values, -args.clip_coef, args.clip_coef)
+            clipped_value_error = (clipped_value - vs.detach())
+            clipped_v_loss = 0.5 * (clipped_value_error.pow(2)).mean()
+            value_loss = torch.max(value_loss, clipped_v_loss)
+
         entropy_loss = entropy.mean()
 
-        drac_value_loss = torch.tensor(0.0, device=device)
-        if args.drac_lambda_v > 0.0:
+        loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
+        if args.kl_coef > 0.0:
+            loss = loss + args.kl_coef * kl
+
+        if args.drac_lambda_v > 0.0 or args.drac_lambda_pi > 0.0:
+            drac_value_loss = torch.tensor(0.0, device=device)
+            drac_policy_loss = torch.tensor(0.0, device=device)
+
             obs_t = drac_transform(flat_obs)
-            _, values_t_flat = agent.get_pi_and_value(obs_t)
-            drac_value_loss = (target_values_flat.detach() - values_t_flat).pow(2).mean()
 
-        loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss \
-               + args.drac_lambda_v * drac_value_loss
+            if args.drac_lambda_v > 0.0:
+                _, values_t_flat = agent.get_pi_and_value(obs_t)
+                drac_value_loss = (target_values_flat.detach() - values_t_flat).pow(2).mean()
 
-        # loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
+            if args.drac_lambda_pi > 0.0:
+                pi_t, _ = agent.get_pi_and_value(obs_t)
+                dist_clean = torch.distributions.Categorical(logits=target_logits_flat)
+                dist_flip = torch.distributions.Categorical(logits=pi_t.logits)
+                logp_clean = dist_clean.log_prob(actions.reshape(T_ * N_))
+                logp_flip = remap_logprobs_for_flip(
+                    dist_flip,
+                    actions.reshape(T_ * N_),
+                    hflip=args.drac_hflip,
+                    vflip=args.drac_vflip
+                )
+                drac_policy_loss = (logp_clean.detach() - logp_flip).pow(2).mean()
 
-        updates = actor_batches_per_update
-        for _ in range(updates):
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
-            optimizer.step()
+            loss = + args.drac_lambda_v * drac_value_loss + args.drac_lambda_pi * drac_policy_loss
+
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
+        optimizer.step()
 
         if args.use_ucb:
             gts.update_distribution(rewards)
