@@ -23,6 +23,8 @@ from impoola_cnn.impoola.utils.utils import get_device
 
 @dataclass
 class Args:
+    extensive_logging: bool = True  # whether to log detailed per-episode data
+
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     seed: int = 1
     torch_deterministic: bool = True

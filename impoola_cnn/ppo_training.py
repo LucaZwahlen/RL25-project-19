@@ -14,16 +14,24 @@ import tyro
 from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
                                                              progcen_hard_hns,
                                                              progcen_hns)
-from impoola_cnn.impoola.maker.make_env import make_an_env
+from impoola_cnn.impoola.maker.make_env import make_an_env, make_procgen_env
 from impoola_cnn.impoola.train.agents import PPOAgent
 from impoola_cnn.impoola.train.train_ppo_agent import train_ppo_agent
 from impoola_cnn.impoola.utils.csv_logging import Logger
+from impoola_cnn.impoola.utils.environment_knowledge import TEST_ENV_RANGE
 from impoola_cnn.impoola.utils.save_load import save_checkpoint
 from impoola_cnn.impoola.utils.utils import get_device
 
 
 @dataclass
 class Args:
+
+    extensive_logging: bool = True  # whether to log detailed per-episode data
+
+    # all knowning
+    is_all_knowing: bool = False
+    move_penalty: float = 0.05
+
     # General Settings
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     seed: int = 1
@@ -116,9 +124,13 @@ if __name__ == "__main__":
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
 
-    envs = make_an_env(args, seed=args.seed,
-                       normalize_reward=args.normalize_reward,
-                       full_distribution=False)
+    if args.is_all_knowing:
+        envs = make_procgen_env(args, full_distribution=False, normalize_reward=args.normalize_reward, rand_seed=args.seed, render=False,
+                                distribution_mode=args.distribution_mode, num_levels_override=TEST_ENV_RANGE, start_level_override=0)
+    else:
+        envs = make_an_env(args, seed=args.seed,
+                           normalize_reward=args.normalize_reward,
+                           full_distribution=False)
 
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 

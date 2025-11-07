@@ -68,6 +68,30 @@ class ProcgenToGymNewAPI(gym.Wrapper):
         return ob, reward, terminated, truncated, dict_info
 
 
+class NoopPenaltyWrapper(gym.Wrapper):
+    def __init__(self, env, penalty_scale, env_id):
+        super().__init__(env)
+        self.penalty_scale = penalty_scale
+        from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
+        noop_indices = get_noop_indices(env_id)
+        self.noop_mask = np.zeros(env.action_space.n, dtype=bool)
+        self.noop_mask[noop_indices] = True
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+
+        # Apply penalty before normalization
+        if hasattr(action, '__len__'):  # Vectorized
+            penalty_mask = ~self.noop_mask[action]
+            penalty = penalty_mask * self.penalty_scale
+            reward = reward - penalty
+        else:  # Single environment
+            if not self.noop_mask[action]:
+                reward -= self.penalty_scale
+
+        return obs, reward, terminated, truncated, info
+
+
 def _make_procgen_env(num_envs, env_id, num_levels, start_level, rand_seed, render=False, distribution_mode="easy"):
     # print(f"Using track: {env_track} (num_levels: {num_levels})")
 
@@ -118,6 +142,10 @@ def make_procgen_env(args, full_distribution=False, normalize_reward=False, rand
     envs = _make_procgen_env(args.num_envs, args.env_id, num_levels, start_level, rand_seed, render, distribution_mode)
 
     envs = gym.wrappers.RecordEpisodeStatistics(envs)
+
+    # Apply penalty BEFORE normalization
+    if hasattr(args, 'is_all_knowing') and args.is_all_knowing:
+        envs = NoopPenaltyWrapper(envs, penalty_scale=args.move_penalty, env_id=args.env_id)
 
     if normalize_reward:
         envs = gym.wrappers.NormalizeReward(envs, gamma=args.gamma)

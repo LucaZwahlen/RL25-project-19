@@ -37,7 +37,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
     learning_rate = optimizer.param_groups[0]["lr"].clone()
     max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
 
-    episodeQueueCalculator = EpisodeQueueCalculator(True, args.normalize_reward, 100, args.env_id, N, args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator('train', args.seed, args.normalize_reward, 100, args.env_id, N, args.distribution_mode, device)
 
     global_step = 0
 
@@ -128,8 +128,10 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             iteration_end_time = time.time()
             cumulative_training_time += (iteration_end_time - iteration_start_time)
 
-            test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = evaluate_test_performance(
-                agent, args, device)
+            simple, detailed = evaluate_test_performance(agent, args, device)
+
+            test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = simple
+            test_rewards, test_num_ticks, test_num_steps, test_is_success, test_spl_terms, _ = detailed
 
             train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
 
@@ -157,6 +159,28 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 global_step,
                 cumulative_training_time
             )
+
+            if args.extensive_logging:
+                train_rewards, train_num_ticks, train_num_steps, train_is_success, train_spl_terms, _ = episodeQueueCalculator.get_raw_counts()
+
+                logger.log_extensive(
+                    avg_policy_loss,
+                    avg_entropy_loss,
+                    avg_value_loss,
+                    test_rewards,
+                    test_num_ticks,
+                    test_num_steps,
+                    test_is_success,
+                    test_spl_terms,
+                    train_rewards,
+                    train_num_ticks,
+                    train_num_steps,
+                    train_is_success,
+                    train_spl_terms,
+                    iteration,
+                    global_step,
+                    cumulative_training_time
+                )
 
             iteration_start_time = time.time()
 

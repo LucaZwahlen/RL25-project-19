@@ -18,7 +18,7 @@ def evaluate_test_performance(agent, args, device):
     test_envs = make_procgen_env(test_args, full_distribution=False, normalize_reward=False, rand_seed=args.seed, render=False,
                                  distribution_mode=args.distribution_mode, num_levels_override=TEST_ENV_RANGE - 1000, start_level_override=1000)
 
-    episodeQueueCalculator = EpisodeQueueCalculator(False, False, 0, test_args.env_id, test_args.num_envs, test_args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator('test', args.seed, False, 0, test_args.env_id, test_args.num_envs, test_args.distribution_mode, device)
 
     num_episodes = 0
     target_episodes = 64
@@ -42,4 +42,4 @@ def evaluate_test_performance(agent, args, device):
 
     test_envs.close()
 
-    return episodeQueueCalculator.get_statistics()
+    return episodeQueueCalculator.get_statistics(), episodeQueueCalculator.get_raw_counts()

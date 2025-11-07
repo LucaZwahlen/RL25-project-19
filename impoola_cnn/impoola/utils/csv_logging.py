@@ -9,7 +9,8 @@ import numpy as np
 import torch
 
 from impoola_cnn.impoola.utils.environment_knowledge import (
-    try_get_optimal_test_path_length, try_get_optimal_train_path_length)
+    try_get_optimal_all_knowing_path_length, try_get_optimal_test_path_length,
+    try_get_optimal_train_path_length)
 from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
 from impoola_cnn.impoola.utils.success_rewards import get_success_reward
 
@@ -17,9 +18,14 @@ EPSILON = 0.25
 
 
 class EpisodeQueueCalculator:
-    def __init__(self, is_train, normalize_reward, queue_len, env_id, num_envs, distribution_mode, device):
+    def __init__(self, type, seed, normalize_reward, queue_len, env_id, num_envs, distribution_mode, device):
         self.normalize_reward = normalize_reward
-        self.optimal_path_length = try_get_optimal_train_path_length(env_id, distribution_mode) if is_train else try_get_optimal_test_path_length(env_id)
+        if type == 'train':
+            self.optimal_path_length = try_get_optimal_train_path_length(env_id, seed, distribution_mode)
+        elif type == 'test':
+            self.optimal_path_length = try_get_optimal_test_path_length(env_id, seed)
+        elif type == 'all-knowing':
+            self.optimal_path_length = try_get_optimal_all_knowing_path_length(env_id, distribution_mode)
 
         self.ticks = torch.zeros((num_envs,), device=device)
         self.steps = torch.zeros((num_envs,), device=device)
@@ -87,11 +93,15 @@ class EpisodeQueueCalculator:
 
         return mean_reward, median_reward, mean_ticks, mean_steps, mean_success, mean_spl, levels, count
 
+    def get_raw_counts(self):
+        return self.rewards, self.num_ticks, self.num_steps, self.is_success, self.spl_terms, list(self.level_seeds)
+
 
 class Logger:
     def __init__(self, args):
         self.output_file_csv = os.path.join(args.output_dir, "sit_format.csv")
         self.output_file_levels = os.path.join(args.output_dir, "levels.jsonl")
+        self.output_file_extensive = os.path.join(args.output_dir, "extensive_logs.jsonl")
         self.output_file_config = os.path.join(args.output_dir, "config.json")
 
         # Initialize files and directories
@@ -104,6 +114,7 @@ class Logger:
 
         # Open levels file and keep handle open
         self.levels_file = open(self.output_file_levels, 'w')
+        self.extensive_file = open(self.output_file_extensive, 'w')
 
         # Write CSV header
         self.csv_writer.writerow(
@@ -152,6 +163,11 @@ class Logger:
         self.levels_file.write('\n')
         self.levels_file.flush()
 
+    def _log_extensive_data(self, extensive_data):
+        json.dump(extensive_data, self.extensive_file)
+        self.extensive_file.write('\n')
+        self.extensive_file.flush()
+
     def _log_csv_data(self, row):
         self.csv_writer.writerow(row)
         self.csv_file.flush()
@@ -191,8 +207,34 @@ class Logger:
         self._log_csv_data(row)
         self._log_level_data(levels)
 
+    def log_extensive(self, action_loss, dist_entropy, value_loss, test_rewards, test_ticks, test_steps, test_success, test_spl,
+                      train_rewards, train_ticks, train_steps, train_success, train_spl, nupdates, total_steps, training_time):
+        # Log per-episode data in extensive logging mode
+        extensive = {
+            "action_loss": float(action_loss),
+            "dist_entropy": float(dist_entropy),
+            "value_loss": float(value_loss),
+            "test_rewards": [float(r) for r in test_rewards],
+            "test_ticks": [float(t) for t in test_ticks],
+            "test_steps": [float(s) for s in test_steps],
+            "test_success": [int(s) for s in test_success],
+            "test_spl": [float(s) for s in test_spl],
+            "train_rewards": [float(r) for r in train_rewards],
+            "train_ticks": [float(t) for t in train_ticks],
+            "train_steps": [float(s) for s in train_steps],
+            "train_success": [int(s) for s in train_success],
+            "train_spl": [float(s) for s in train_spl],
+            "nupdates": nupdates,
+            "total_steps": total_steps,
+            "training_time": float(training_time),
+        }
+
+        self._log_extensive_data(extensive)
+
     def close(self):
         if self.levels_file:
             self.levels_file.close()
         if self.csv_file:
             self.csv_file.close()
+        if self.extensive_file:
+            self.extensive_file.close()
