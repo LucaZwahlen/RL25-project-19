@@ -16,6 +16,7 @@ from impoola_cnn.impoola.utils.evaluate_test_performance import \
     evaluate_test_performance
 from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
 from impoola_cnn.impoola.utils.success_rewards import get_success_reward
+from impoola_cnn.impoola.utils.ucb import GaussianThompsonSampling
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
@@ -49,7 +50,17 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
 
     next_done = torch.zeros(N, device=device, dtype=torch.bool)
 
+    ucb_obj = None
+    if args.use_ucb:
+        gts = GaussianThompsonSampling(param_values=args.ucb_actor_batches_candidates, init_mean=0., init_std=1., window_size=args.ucb_window_length)
+
     for iteration in trange(1, args.num_iterations + 1):
+
+        if args.use_ucb:
+            _, chosen = gts.select_param()
+            actor_batches_per_update = int(chosen)
+        else:
+            actor_batches_per_update = int(args.actor_batches_per_update)
 
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
@@ -113,10 +124,15 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
 
         loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
-        optimizer.step()
+        updates = actor_batches_per_update
+        for _ in range(updates):
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
+            optimizer.step()
+
+        if args.use_ucb:
+            gts.update_distribution(rewards)
 
         eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
         do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)

@@ -76,6 +76,11 @@ class Args:
     p_augment: float = 0.1
     micro_dropout_p: float = 0.01
 
+    use_ucb: bool = False
+    ucb_exploration_coef: float = 5.0
+    ucb_window_length: int = 10
+    ucb_actor_batches_candidates: tuple = (5, 3, 2, 1)
+
 
 if __name__ == "__main__":
 
