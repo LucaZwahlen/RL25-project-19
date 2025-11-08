@@ -40,7 +40,7 @@ class Args:
     learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 96 # 96
+    num_envs: int = 80 # 96
     unroll_length: int = 20
     gamma: float = 0.99
 
@@ -54,21 +54,18 @@ class Args:
 
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
-    actor_batches_per_update: int = 1
 
     encoder_type: str = "impala_new"  # impala
     scale: int = 2
     pruning_type: str = "Baseline"
     weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
-    cnn_filters: tuple = (8, 16, 24) #(16, 32, 32)
+    cnn_filters: tuple = (16, 32, 32)
     activation: str = 'silu' # relu
     rescale_lr_by_scale: bool = True
 
     redo_tau: float = 0.025
     redo_interval: int = 100
-
-    log_interval: int = 1
 
     n_datapoints_csv: int = 500
 
@@ -82,8 +79,8 @@ class Args:
     p_augment: float = 0.0
     micro_dropout_p: float = 0.01
 
-    drac_lambda_v: float = 5e-4
-    drac_lambda_pi: float = 1e-4
+    drac_lambda_v: float = 0
+    drac_lambda_pi: float = 5e-4
     drac_vflip: bool = True
     drac_hflip: bool = True
 
