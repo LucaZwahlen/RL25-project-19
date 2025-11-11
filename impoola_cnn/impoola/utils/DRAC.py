@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 
-UP = [5, 11]
-DOWN = [3, 12]
-LEFT = [1, 10]
-RIGHT = [7, 9]
+UP = [5]
+DOWN = [3]
+LEFT = [1]
+RIGHT = [7]
 
 
 def _build_swap_map(group_a, group_b):

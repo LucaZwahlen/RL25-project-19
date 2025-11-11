@@ -17,7 +17,7 @@ from impoola_cnn.impoola.maker.make_env import make_an_env
 from impoola_cnn.impoola.train.agents import Vtrace
 from impoola_cnn.impoola.train.train_vtrace_agent import train_vtrace_agent
 from impoola_cnn.impoola.utils.csv_logging import Logger
-from impoola_cnn.impoola.utils.save_load import save_checkpoint
+from impoola_cnn.impoola.utils.save_load import save_checkpoint, load_checkpoint
 from impoola_cnn.impoola.utils.utils import get_device
 
 
@@ -37,10 +37,10 @@ class Args:
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
-    learning_rate: float = 6.0e-4
+    learning_rate: float = 5.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 80 # 96
+    num_envs: int = 80  # 96
     unroll_length: int = 20
     gamma: float = 0.99
 
@@ -61,7 +61,7 @@ class Args:
     weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
-    activation: str = 'silu' # relu
+    activation: str = 'silu'  # relu
     rescale_lr_by_scale: bool = True
 
     redo_tau: float = 0.025
@@ -69,7 +69,7 @@ class Args:
 
     n_datapoints_csv: int = 500
 
-    update_epochs: int = 1 # 2
+    update_epochs: int = 2  # 2
     batch_size = int(num_envs * unroll_length)
     num_iterations = total_timesteps // batch_size
 
@@ -77,97 +77,122 @@ class Args:
     output_dir: str = os.path.join("outputs", run_name)
 
     p_augment: float = 0.0
-    micro_dropout_p: float = 0.01
+    micro_dropout_p: float = 0.0
 
-    drac_lambda_v: float = 0
-    drac_lambda_pi: float = 5e-4
+    drac_lambda_v: float = 1e-4
+    drac_lambda_pi: float = 1e-3
     drac_vflip: bool = True
     drac_hflip: bool = True
 
     clip_coef: float = 0.2
     clip_vloss: bool = True
 
+    load_model_path: Optional[str] = None
+
 
 if __name__ == "__main__":
 
-    args = tyro.cli(Args)
-    logger = Logger(args)
+    try:
 
-    global progcen_hns
-    if args.distribution_mode == "easy":
-        progcen_hns.update(progcen_easy_hns)
-    elif args.distribution_mode == "hard":
-        progcen_hns.update(progcen_hard_hns)
-    else:
-        raise ValueError(f"Invalid distribution mode: {args.distribution_mode}")
+        args = tyro.cli(Args)
+        logger = Logger(args)
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.backends.cudnn.deterministic = args.torch_deterministic
+        global progcen_hns
+        if args.distribution_mode == "easy":
+            progcen_hns.update(progcen_easy_hns)
+        elif args.distribution_mode == "hard":
+            progcen_hns.update(progcen_hard_hns)
+        else:
+            raise ValueError(f"Invalid distribution mode: {args.distribution_mode}")
 
-    device = get_device()
-    line = "=" * 72
-    sub = "-" * 72
-    title = "TRAINING RUN CONFIGURATION"
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    print(line)
-    print(f"{title:^72}")
-    print(sub)
-    print(f"Run name       : {args.run_name}")
-    print(f"Batch size     : {args.batch_size}")
-    print(f"Num iterations : {args.num_iterations}")
-    print(f"Outputs dir    : {args.output_dir}")
-    print(f"Device         : {device}")
-    print(line)
+        device = get_device()
+        line = "=" * 72
+        sub = "-" * 72
+        title = "TRAINING RUN CONFIGURATION"
 
-    if device.type == 'cuda':
-        torch.set_float32_matmul_precision("high")
-        torch.backends.cudnn.benchmark = True
+        print(line)
+        print(f"{title:^72}")
+        print(sub)
+        print(f"Run name       : {args.run_name}")
+        print(f"Batch size     : {args.batch_size}")
+        print(f"Num iterations : {args.num_iterations}")
+        print(f"Outputs dir    : {args.output_dir}")
+        print(f"Device         : {device}")
+        print(line)
 
-    envs = make_an_env(args, seed=args.seed,
-                       normalize_reward=args.normalize_reward,
-                       full_distribution=False)
+        if device.type == 'cuda':
+            torch.set_float32_matmul_precision("high")
+            torch.backends.cudnn.benchmark = True
 
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+        envs = make_an_env(args, seed=args.seed,
+                           normalize_reward=args.normalize_reward,
+                           full_distribution=False)
 
-    agent = Vtrace(
-        encoder_type=args.encoder_type,
-        envs=envs,
-        width_scale=args.scale,
-        out_features=args.latent_space_dim,
-        cnn_filters=args.cnn_filters,
-        activation=args.activation,
-        use_layer_init_normed=False,
-        p_augment=args.p_augment,
-        micro_dropout_p=args.micro_dropout_p
-    ).to(device)
+        assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    with torch.no_grad():
-        example_input = 127 * np.ones((1,) + envs.single_observation_space.shape).astype(
-            envs.single_observation_space.dtype)
-        example_input = torch.tensor(example_input).to(device)
-        agent.get_action_and_value(example_input)
+        agent = Vtrace(
+            encoder_type=args.encoder_type,
+            envs=envs,
+            width_scale=args.scale,
+            out_features=args.latent_space_dim,
+            cnn_filters=args.cnn_filters,
+            activation=args.activation,
+            use_layer_init_normed=False,
+            p_augment=args.p_augment,
+            micro_dropout_p=args.micro_dropout_p
+        ).to(device)
 
-    # statistics, total_params, m_macs, param_bytes = network_summary(agent, example_input, device)
+        with torch.no_grad():
+            example_input = 127 * np.ones((1,) + envs.single_observation_space.shape).astype(
+                envs.single_observation_space.dtype)
+            example_input = torch.tensor(example_input).to(device)
+            agent.get_action_and_value(example_input)
 
-    optimizer = optim.Adam(
-        agent.parameters(),
-        lr=torch.tensor(args.learning_rate, device=device),
-        eps=1e-5,
-        weight_decay=args.weight_decay,
-        fused=True
-    )
+        # statistics, total_params, m_macs, param_bytes = network_summary(agent, example_input, device)
 
-    if args.rescale_lr_by_scale:
-        lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
-        optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
+        optimizer = optim.Adam(
+            agent.parameters(),
+            lr=torch.tensor(args.learning_rate, device=device),
+            eps=1e-5,
+            weight_decay=args.weight_decay,
+            fused=True
+        )
 
-    envs, agent, global_step, b_obs = train_vtrace_agent(args, logger, envs, agent, optimizer, device)
+        if args.rescale_lr_by_scale:
+            lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
+            optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
 
-    save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, "checkpoint_final")
+        if args.load_model_path is not None:
+            agent.global_step = load_checkpoint(
+                agent=agent,
+                optimizer=optimizer,
+                checkpoint_path=args.load_model_path,
+                device=get_device(),
+                envs=envs,
+            )
 
-    envs.close()
-    logger.close()
+        envs, agent, global_step, b_obs = train_vtrace_agent(args, logger, envs, agent, optimizer, device)
 
-    print(f"All training and evaluation complete! Files saved to: {args.output_dir}")
+        save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, "checkpoint_final")
+
+        envs.close()
+        logger.close()
+
+        print(f"All training and evaluation complete! Files saved to: {args.output_dir}")
+
+    except KeyboardInterrupt:
+        print(f"KeyboardInterrupt: Saving checkpoint...")
+        save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name,
+                        "checkpoint_interrupt")
+
+    except Exception as e:
+        print(f"Unhandled exception: {e}. Saving checkpoint...")
+        save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name,
+                        "checkpoint_crash")
+
+        print(f"All training and evaluation complete or interrupted. Files saved to: {args.output_dir}")
