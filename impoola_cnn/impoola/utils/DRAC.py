@@ -1,10 +1,8 @@
 import torch
 import torch.nn as nn
 
-UP = [5]
-DOWN = [3]
-LEFT = [1]
-RIGHT = [7]
+LEFT = [0, 1, 2]
+RIGHT = [6, 7, 8]
 
 
 def _build_swap_map(group_a, group_b):
@@ -13,21 +11,17 @@ def _build_swap_map(group_a, group_b):
 
 
 HFLIP_MAP = _build_swap_map(LEFT, RIGHT)
-VFLIP_MAP = _build_swap_map(UP, DOWN)
 
 
 class DRACTransformChaserFruitbot(nn.Module):
     def __init__(self, hflip=False, vflip=False):
         super().__init__()
         self.hflip = bool(hflip)
-        self.vflip = bool(vflip)
 
     @torch.no_grad()
     def _maybe_flip(self, x):
         if self.hflip:
             x = torch.flip(x, dims=[3])
-        if self.vflip:
-            x = torch.flip(x, dims=[2])
         return x
 
     @torch.no_grad()
@@ -53,14 +47,8 @@ def remap_actions_hflip(actions):
     return _remap_with_map(actions, HFLIP_MAP)
 
 
-def remap_actions_vflip(actions):
-    return _remap_with_map(actions, VFLIP_MAP)
-
-
 def remap_logprobs_for_flip(dist, actions, hflip=False, vflip=False):
     a = actions
     if hflip:
         a = remap_actions_hflip(a)
-    if vflip:
-        a = remap_actions_vflip(a)
     return dist.log_prob(a)
