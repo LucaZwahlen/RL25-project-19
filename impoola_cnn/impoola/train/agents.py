@@ -123,3 +123,46 @@ class Vtrace(ActorCriticAgent):
     def get_pi_and_value(self, x):
         logits, value = self.forward(x)
         return Categorical(logits=logits), value
+
+import torch
+import torch.nn as nn
+from torch.distributions import Categorical
+
+
+class GRPOAgent(ActorCriticAgent):
+    """
+    Extension of PPOAgent with GRPO-safe action/value retrieval.
+    """
+
+    def get_action_and_value(self, x, action=None, n_actions=None):
+        logits, value = self.forward(x)
+
+        # Handle NaN/Inf logits gracefully
+        if torch.isnan(logits).any() or torch.isinf(logits).any():
+            print("⚠️ [GRPOAgent] NaN/Inf logits detected – replacing with zeros.")
+            logits = torch.zeros_like(logits)
+
+        pi = Categorical(logits=logits)
+
+        # Sample if no action provided
+        if action is None:
+            action = pi.sample()
+
+        # Clamp actions safely (avoids vectorized_gather_kernel crash)
+        if n_actions is not None:
+            action = torch.clamp(action, 0, n_actions - 1)
+
+        # Compute standard outputs
+        logprob = pi.log_prob(action)
+        entropy = pi.entropy()
+
+        # Group-normalized logprob (for GRPO)
+        # Optional, for diagnostics; GRPO loss can do its own centering
+        logprob = torch.nan_to_num(logprob, nan=0.0, neginf=0.0, posinf=0.0)
+
+        return action, logprob, entropy, value, logits
+
+    def get_pi_and_value(self, x):
+        logits, value = self.forward(x)
+        logits = torch.nan_to_num(logits, nan=0.0, neginf=0.0, posinf=0.0)
+        return Categorical(logits=logits), value
