@@ -30,7 +30,6 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         vf_coef = torch.tensor(args.vf_coef, device=device)
         rho_bar = torch.tensor(args.vtrace_rho_bar, device=device)
         c_bar = torch.tensor(args.vtrace_c_bar, device=device)
-        max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
 
         episodeQueueCalculator = EpisodeQueueCalculator('train', args.seed, args.normalize_reward, 100, args.env_id, N,
                                                         args.distribution_mode, device)
@@ -41,29 +40,29 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         iteration_start_time = time.time()
 
         next_obs_np, _ = envs.reset()
-        next_obs = torch.from_numpy(next_obs_np).to(device)
-        next_done = torch.zeros(N, device=device, dtype=torch.bool)
+        next_obs = torch.from_numpy(next_obs_np).to(device, non_blocking=True).to(torch.uint8)
 
         for iteration in trange(1, args.num_iterations + 1):
 
             for step in range(0, T):
                 global_step += N
                 obs[step] = next_obs
-                dones[step] = next_done
 
                 with torch.no_grad():
-                    action, _, ent, value, pi_logits = agent.get_action_and_value(next_obs)
+                    action, _, _, value, pi_logits = agent.get_action_and_value(next_obs)
+                    actions[step] = action
                     values[step] = value.flatten()
                     behavior_logits[step] = pi_logits
 
                 np_actions = actions[step].detach().cpu().numpy()
                 next_obs_np, reward_np, terminated_np, truncated_np, info = envs.step(np_actions)
 
-                next_obs = torch.from_numpy(next_obs_np).to(device, non_blocking=True)
                 rewards[step] = torch.as_tensor(reward_np, device=device, dtype=torch.float32)
-                next_done = torch.as_tensor(np.logical_or(terminated_np, truncated_np), device=device, dtype=torch.bool)
+                dones[step] = torch.as_tensor(np.logical_or(terminated_np, truncated_np), device=device,
+                                              dtype=torch.bool)
+                next_obs = torch.from_numpy(next_obs_np).to(device, non_blocking=True).to(torch.uint8)
 
-                episodeQueueCalculator.update(action, rewards[step])
+                episodeQueueCalculator.update(actions[step], rewards[step])
 
                 if "_episode" in info.keys():
                     episodeQueueCalculator.extend(info)
@@ -77,7 +76,6 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             flat_obs = b_obs
             target_pi, target_values_flat = agent.get_pi_and_value(flat_obs)
             target_logits_flat = target_pi.logits
-            target_values = target_values_flat.reshape(T_, N_)
             target_logits = target_logits_flat.reshape(T_, N_, -1)
 
             vs, pg_adv = compute_vtrace_targets(
@@ -87,9 +85,9 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 bootstrap_value=bootstrap_value,
                 behavior_logits=behavior_logits,
                 target_logits=target_logits,
-                gamma=torch.tensor(args.gamma, device=device, dtype=torch.float32),
-                rho_bar=torch.tensor(args.vtrace_rho_bar, device=device, dtype=torch.float32),
-                c_bar=torch.tensor(args.vtrace_c_bar, device=device, dtype=torch.float32),
+                gamma=gamma,
+                rho_bar=rho_bar,
+                c_bar=c_bar,
                 actions=actions.reshape(T * N)
             )
 

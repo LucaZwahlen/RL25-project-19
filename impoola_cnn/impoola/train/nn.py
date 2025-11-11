@@ -24,7 +24,6 @@ def activation_factory(activation):
         raise NotImplementedError
 
 
-
 def encoder_factory(encoder_type, *args, **kwargs):
     if encoder_type == 'impala':
         model = ImpalaCNN(*args, **kwargs)

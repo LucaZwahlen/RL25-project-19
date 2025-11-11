@@ -79,6 +79,7 @@ class Args:
 
     p_augment: float = 0.0
     micro_dropout_p: float = 0.0
+    drac_lambda = 0.0
 
     batch_size = int(num_envs * num_steps)
     minibatch_size = int(batch_size // num_minibatches)
