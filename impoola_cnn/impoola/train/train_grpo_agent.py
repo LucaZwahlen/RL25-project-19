@@ -178,8 +178,8 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
             train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
 
             logger.log(
-                 
-                 
+                avg_policy_loss,
+                avg_entropy_loss,
                 avg_value_loss,
                 test_mean_reward,
                 test_median_reward,
