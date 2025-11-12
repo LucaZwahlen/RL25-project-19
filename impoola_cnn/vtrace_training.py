@@ -44,7 +44,7 @@ class Args:
     anneal_lr: bool = False
 
     num_envs: int = 64  # 96
-    unroll_length: int = 30 # 20
+    unroll_length: int = 20 # 20
     gamma: float = 0.99
 
     ent_coef: float = 0.01
@@ -76,7 +76,7 @@ class Args:
     p_augment: float = 0.0
     micro_dropout_p: float = 0.01
 
-    drac_lambda = 0.05
+    drac_lambda = 0.0
 
     load_model_path: Optional[str] = None
 
@@ -137,12 +137,6 @@ if __name__ == "__main__":
             p_augment=args.p_augment,
             micro_dropout_p=args.micro_dropout_p
         ).to(device)
-
-        with torch.no_grad():
-            example_input = 127 * np.ones((1,) + envs.single_observation_space.shape).astype(
-                envs.single_observation_space.dtype)
-            example_input = torch.tensor(example_input).to(device)
-            agent.get_action_and_value(example_input)
 
         # statistics, total_params, m_macs, param_bytes = network_summary(agent, example_input, device)
 

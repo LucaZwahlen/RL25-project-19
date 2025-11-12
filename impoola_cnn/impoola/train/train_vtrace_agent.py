@@ -96,7 +96,10 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             entropy = flat_target_pi.entropy().view(T, N)
 
             policy_loss = -(pg_adv.detach() * logp).mean()
-            value_loss = 0.5 * (values - vs.detach()).pow(2).mean()
+
+            target_values = target_values_flat.reshape(T_, N_)
+            value_loss = 0.5 * (target_values - vs.detach()).pow(2).mean()
+
             entropy_loss = entropy.mean()
 
             loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
@@ -124,7 +127,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            nn.utils.clip_grad_norm_(agent.parameters(), torch.tensor(args.max_grad_norm, device=device))
+            nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
             optimizer.step()
 
             eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
