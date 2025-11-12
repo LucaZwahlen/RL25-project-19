@@ -51,7 +51,7 @@ parser.add_argument(
 parser.add_argument(
     '--num_processes',
     type=int,
-    default=64,
+    default=32,
     help='how many training CPU processes to use')
 parser.add_argument(
     '--num_steps',
@@ -61,12 +61,12 @@ parser.add_argument(
 parser.add_argument(
     '--ppo_epoch',
     type=int,
-    default=3,
+    default=2,
     help='number of ppo epochs')
 parser.add_argument(
     '--num_mini_batch',
     type=int,
-    default=8,
+    default=96,
     help='number of batches for ppo')
 parser.add_argument(
     '--clip_param',
