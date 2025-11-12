@@ -11,15 +11,15 @@ def layer_init_orthogonal(layer, std=np.sqrt(2), bias_const=0.0):
 
 def activation_factory(activation):
     if activation == 'relu':
-        return nn.ReLU()
+        return nn.ReLU(inplace=True)
     elif activation == 'leaky_relu':
-        return nn.LeakyReLU()
+        return nn.LeakyReLU(inplace=True)
     elif activation == 'rrelu':
-        return nn.RReLU()
+        return nn.RReLU(inplace=True)
     elif activation == 'gelu':
-        return nn.GELU()
+        return nn.GELU(approximate='tanh')
     elif activation == 'silu':
-        return nn.SiLU()
+        return nn.SiLU(inplace=True)
     else:
         raise NotImplementedError
 
@@ -101,7 +101,7 @@ class ImpalaCNN(nn.Module):
     ):
         super().__init__()
 
-        self.augment = TrainOnlyBlurNoise(p=p_augment, noise_std=1e-3)
+        self.augment = TrainOnlyBlurNoise(p=p_augment)
         shape = envs.single_observation_space.shape  # (c, h, w)
         scale = 1 / np.sqrt(len(cnn_filters))  # Not fully sure about the logic behind this but it's used in PPG code
 
@@ -132,7 +132,8 @@ class ImpalaCNN(nn.Module):
         self.network = nn.Sequential(*linear_layers)
 
     def forward(self, x):
-        x = x / 255.0
+        x = x.to(memory_format=torch.channels_last)
+        x = x.float().mul_(1.0 / 255.0)
         x = self.augment(x)
         return self.network(x)
 

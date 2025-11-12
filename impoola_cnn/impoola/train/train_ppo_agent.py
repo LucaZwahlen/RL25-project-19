@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from tqdm import trange
 
+from impoola_cnn.impoola.utils.DRAC import DRACTransformChaserFruitbot, remap_logprobs_for_flip
 from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
                                                    Logger)
 from impoola_cnn.impoola.utils.evaluate_test_performance import \
@@ -38,6 +39,8 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
     clip_vloss = torch.tensor(args.clip_vloss, device=device)
     learning_rate = optimizer.param_groups[0]["lr"].clone()
     max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
+
+    drac_transform = DRACTransformChaserFruitbot().to(device)
 
     from impoola_cnn.impoola.train.ppo_criterion import ppo_gae, ppo_loss
 
@@ -108,6 +111,12 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
         total_entropy_loss = 0
         n_updates = 0
 
+        T_ = args.num_steps
+        N_ = args.num_envs
+
+        target_logits_flat = logits.reshape(T_ * N_, -1)
+        target_values_flat = values.reshape(T_ * N_)
+
         for epoch in range(args.update_epochs):
             b_inds = torch.randperm(args.batch_size, device=device)
             for start in range(0, args.batch_size, args.minibatch_size):
@@ -123,6 +132,26 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                     b_advantages[mb_inds],
                     norm_adv, clip_coef, ent_coef, vf_coef, clip_vloss
                 )
+
+                if args.drac_lambda > 0.0:
+                    flat_actions = b_actions[mb_inds].reshape(-1)
+                    logits_full = target_logits_flat[mb_inds]
+                    val_full = target_values_flat[mb_inds]
+
+                    obs_t = drac_transform(b_obs[mb_inds].reshape(len(mb_inds), *envs.single_observation_space.shape))
+                    pi_t, values_t = agent.get_pi_and_value(obs_t)
+                    values_t = values_t.squeeze(-1) if values_t.ndim > 1 else values_t
+
+                    drac_value_loss = (val_full.detach() - values_t).pow(2).mean()
+
+                    dist_clean = torch.distributions.Categorical(logits=logits_full)
+                    dist_flip = torch.distributions.Categorical(logits=pi_t.logits if hasattr(pi_t, "logits") else pi_t)
+
+                    logp_clean = dist_clean.log_prob(flat_actions)
+                    logp_flip = remap_logprobs_for_flip(dist_flip, flat_actions)
+
+                    drac_policy_loss = (logp_clean.detach() - logp_flip).pow(2).mean()
+                    loss = loss + args.drac_lambda * (drac_value_loss + drac_policy_loss)
 
                 total_policy_loss += pg_loss.item()
                 total_value_loss += v_loss.item()

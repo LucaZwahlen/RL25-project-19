@@ -1,5 +1,6 @@
 import os
 import random
+import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -27,9 +28,11 @@ class Args:
 
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     seed: int = 1
+
     torch_deterministic: bool = True
     n_episodes_rollout: int = int(2.5e3)
     deterministic_rollout: bool = False
+
     training_eval_ratio: float = 0.01
     normalize_reward: bool = True
 
@@ -37,20 +40,18 @@ class Args:
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
-    learning_rate: float = 5.0e-4
+    learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 80  # 96
-    unroll_length: int = 20
+    num_envs: int = 64  # 96
+    unroll_length: int = 30 # 20
     gamma: float = 0.99
 
     ent_coef: float = 0.01
     vf_coef: float = 0.5
+
     max_grad_norm: float = 0.5
     norm_adv: bool = True
-
-    target_kl: Optional[float] = None
-    kl_coef: float = 0.0
 
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
@@ -61,15 +62,11 @@ class Args:
     weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
-    activation: str = 'silu'  # relu
+    activation: str = 'relu'  # relu
     rescale_lr_by_scale: bool = True
-
-    redo_tau: float = 0.025
-    redo_interval: int = 100
 
     n_datapoints_csv: int = 500
 
-    update_epochs: int = 2  # 2
     batch_size = int(num_envs * unroll_length)
     num_iterations = total_timesteps // batch_size
 
@@ -77,15 +74,9 @@ class Args:
     output_dir: str = os.path.join("outputs", run_name)
 
     p_augment: float = 0.0
-    micro_dropout_p: float = 0.0
+    micro_dropout_p: float = 0.01
 
-    drac_lambda_v: float = 1e-4
-    drac_lambda_pi: float = 1e-3
-    drac_vflip: bool = True
-    drac_hflip: bool = True
-
-    clip_coef: float = 0.2
-    clip_vloss: bool = True
+    drac_lambda = 0.05
 
     load_model_path: Optional[str] = None
 
@@ -192,7 +183,8 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Unhandled exception: {e}. Saving checkpoint...")
+        traceback.print_exc()
         save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name,
                         "checkpoint_crash")
-
+    finally:
         print(f"All training and evaluation complete or interrupted. Files saved to: {args.output_dir}")
