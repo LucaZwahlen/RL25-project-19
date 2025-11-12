@@ -124,7 +124,7 @@ parser.add_argument(
 parser.add_argument(
     '--num_levels',
     type=int,
-    default=200,
+    default=50,
     help='number of Procgen levels to use for training')
 parser.add_argument(
     '--start_level',

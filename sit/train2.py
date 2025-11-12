@@ -336,7 +336,6 @@ def train(args):
         eval_interval = max(1, num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
         do_eval = num_iterations == 0 or (j % eval_interval == 0) or (j == num_iterations)
         if do_eval:
-
             avg_policy_loss = action_loss
             avg_value_loss = value_loss
             avg_entropy_loss = dist_entropy
@@ -410,8 +409,6 @@ def train(args):
                 'model_state_dict': agent.actor_critic.state_dict(),
                 'optimizer_state_dict': agent.optimizer.state_dict(),
             }, os.path.join(args.save_dir, "agent" + log_file + ".pt"))
-
-            iteration_start_time = time.time()
 
 
 if __name__ == "__main__":
