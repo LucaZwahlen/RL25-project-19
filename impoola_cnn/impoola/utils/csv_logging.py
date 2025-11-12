@@ -27,6 +27,7 @@ class EpisodeQueueCalculator:
         elif type == 'all-knowing':
             self.optimal_path_length = try_get_optimal_all_knowing_path_length(env_id, distribution_mode)
 
+        self.num_envs = num_envs
         self.ticks = torch.zeros((num_envs,), device=device)
         self.steps = torch.zeros((num_envs,), device=device)
         self.success = torch.zeros((num_envs,), dtype=torch.bool, device=device)
@@ -60,6 +61,24 @@ class EpisodeQueueCalculator:
         action_op_mask = ~(self.noop_mask[action])
         self.steps += action_op_mask
         self.success = self.success | (rewards >= success_reward_fixed - EPSILON)
+
+    def extend_sit(self, info):
+        dict_info = {}
+        for key in ['episode', 'level_seed', 'prev_level_complete', 'prev_level_seed']:
+            dict_info[key] = [inf[key] for inf in info if key in inf]
+        dict_info['episode'] = {}
+        dict_info['episode']['r'] = np.array([inf['episode']['r'] if 'episode' in inf else 0.0 for inf in info])
+        dict_info['episode']['l'] = np.array([inf['episode']['l'] if 'episode' in inf else 0.0 for inf in info])
+        dict_info['episode']['t'] = np.array([inf['episode']['t'] if 'episode' in inf else 0.0 for inf in info])
+
+        # indices of completed episodes
+        indices = [i for i, inf in enumerate(info) if 'episode' in inf]
+        _episode = np.zeros(self.num_envs, dtype=bool)
+        _episode[indices] = True
+
+        if _episode.any():
+            dict_info['_episode'] = _episode
+            self.extend(dict_info)
 
     def extend(self, info):
         completed_episodes = info["episode"]["r"][info["_episode"]]

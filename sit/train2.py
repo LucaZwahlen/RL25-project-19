@@ -5,9 +5,11 @@ from collections import deque
 import numpy as np
 import torch
 from procgen import ProcgenEnv
+from tqdm import trange
 
 import sit.data_augs
-from sit.baselines import logger
+from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
+                                                   Logger)
 from sit.baselines.common.vec_env.vec_monitor import VecMonitor
 from sit.baselines.common.vec_env.vec_normalize import VecNormalize
 from sit.baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
@@ -20,9 +22,27 @@ from sit.ucb_rl2_meta.model import AugCNN, Policy, Policy_Sit
 from sit.ucb_rl2_meta.storage import RolloutStorage
 
 parser.add_argument(
+    '--extensive_logging',
+    action='store_true',
+    default=True,
+    help='whether to log extensive data to csv')
+
+parser.add_argument(
+    '--n_datapoints_csv',
+    type=int,
+    default=500,
+    help='number of datapoints to log in csv')
+
+parser.add_argument(
+    '--output_dir',
+    type=str,
+    default='outputs',
+    help='directory to save outputs')
+
+parser.add_argument(
     '--device_id',
     type=int,
-    default=1,
+    default=0,
     help='device')
 
 parser.add_argument(
@@ -64,6 +84,9 @@ aug_to_func = {
 
 
 def train(args):
+    args.output_dir = os.path.join(args.output_dir, args.run_name)
+    logger = Logger(args)
+
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     torch.autograd.set_detect_anomaly(True)
     torch.manual_seed(args.seed)
@@ -242,10 +265,8 @@ def train(args):
         agent.actor_critic.load_state_dict(checkpoint['model_state_dict'])
         agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         init_epoch = checkpoint['epoch'] + 1
-        logger.configure(dir=args.log_dir, format_strs=['csv', 'stdout'], log_suffix=log_file + "-e%s" % init_epoch)
     else:
         init_epoch = 0
-        logger.configure(dir=args.log_dir, format_strs=['csv', 'stdout'], log_suffix=log_file)
 
     obs = envs.reset()
     rollouts.obs[0].copy_(obs)
@@ -259,11 +280,16 @@ def train(args):
     cumulative_training_time = 0.0
     iteration_start_time = time.time()
 
-    for j in range(init_epoch, num_updates):
+    global_step = 0
+    episodeQueueCalculator = EpisodeQueueCalculator('train', args.seed, True,
+                                                    10, args.env_name, args.num_processes, args.distribution_mode, device)
+
+    for j in trange(init_epoch, num_updates):
         # get current milliseconds
-        start_time_ms = time.perf_counter() * 1000
         actor_critic.train()
         for step in range(args.num_steps):
+            global_step += args.num_processes
+
             # Sample actions
             with torch.no_grad():
                 obs_id = aug_id(rollouts.obs[step])
@@ -273,6 +299,10 @@ def train(args):
 
             # Obser reward and next obs
             obs, reward, done, infos = envs.step(action)
+
+            episodeQueueCalculator.update(action.squeeze(-1), reward.to(device).squeeze(-1))
+
+            episodeQueueCalculator.extend_sit(infos)
 
             for info in infos:
                 if 'episode' in info.keys():
@@ -301,46 +331,70 @@ def train(args):
         value_loss, action_loss, dist_entropy = agent.update(rollouts)
         rollouts.after_update()
 
-        # Update cumulative training time (excluding evaluation time)
-        iteration_end_time = time.time()
-        cumulative_training_time += (iteration_end_time - iteration_start_time)
+        batch_size = int(args.num_processes * args.num_steps)
+        num_iterations = args.num_env_steps // batch_size
+        eval_interval = max(1, num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
+        do_eval = num_iterations == 0 or (j % eval_interval == 0) or (j == num_iterations)
+        if do_eval:
+            avg_policy_loss = action_loss
+            avg_value_loss = value_loss
+            avg_entropy_loss = dist_entropy
 
-        # save for every interval-th episode or for the last epoch
-        total_num_steps = (j + 1) * args.num_processes * args.num_steps
-        if j % args.log_interval == 0 and len(episode_rewards) > 1:
-            total_num_steps = (j + 1) * args.num_processes * args.num_steps
-            print("\nUpdate {}, step {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}"
-                  .format(j, total_num_steps,
-                          len(episode_rewards), np.mean(episode_rewards),
-                          np.median(episode_rewards), dist_entropy, value_loss,
-                          action_loss))
+            iteration_end_time = time.time()
+            cumulative_training_time += (iteration_end_time - iteration_start_time)
 
-            logger.logkv("train/nupdates", j)
-            logger.logkv("train/total_num_steps", total_num_steps)
+            simple, detailed = evaluate(args, actor_critic, device, aug_id=aug_id)
+            test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = simple
+            test_rewards, test_num_ticks, test_num_steps, test_is_success, test_spl_terms, _ = detailed
+            train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
+            logger.log(
+                avg_policy_loss,
+                avg_entropy_loss,
+                avg_value_loss,
+                test_mean_reward,
+                test_median_reward,
+                test_levels,
+                test_count,
+                test_ticks,
+                test_steps,
+                test_success,
+                test_spl,
+                train_mean_reward,
+                train_median_reward,
+                train_levels,
+                train_count,
+                train_ticks,
+                train_steps,
+                train_success,
+                train_spl,
+                j,
+                global_step,
+                cumulative_training_time
+            )
 
-            logger.logkv("losses/dist_entropy", dist_entropy)
-            logger.logkv("losses/value_loss", value_loss)
-            logger.logkv("losses/action_loss", action_loss)
+            if args.extensive_logging:
+                train_rewards, train_num_ticks, train_num_steps, train_is_success, train_spl_terms, _ = episodeQueueCalculator.get_raw_counts()
 
-            logger.logkv("train/mean_episode_reward", np.mean(episode_rewards))
-            logger.logkv("train/median_episode_reward", np.median(episode_rewards))
+                logger.log_extensive(
+                    avg_policy_loss,
+                    avg_entropy_loss,
+                    avg_value_loss,
+                    test_rewards,
+                    test_num_ticks,
+                    test_num_steps,
+                    test_is_success,
+                    test_spl_terms,
+                    train_rewards,
+                    train_num_ticks,
+                    train_num_steps,
+                    train_is_success,
+                    train_spl_terms,
+                    j,
+                    global_step,
+                    cumulative_training_time
+                )
 
-            ### Eval on the Full Distribution of Levels - EXCLUDE from training time ###
-            eval_start_time = time.time()
-            eval_episode_rewards = evaluate(args, actor_critic, device, aug_id=aug_id)
-            eval_end_time = time.time()
-            # Note: We don't add eval time to cumulative_training_time
-
-            logger.logkv("test/mean_episode_reward", np.mean(eval_episode_rewards))
-            logger.logkv("test/median_episode_reward", np.median(eval_episode_rewards))
-
-            # Add training time to the logged metrics
-            logger.logkv("train/training_time", cumulative_training_time)
-
-            logger.dumpkvs()
-
-        # Start timing next iteration (after any potential evaluation)
-        iteration_start_time = time.time()
+            iteration_start_time = time.time()
 
         # Save Model
         if (j > 0 and j % args.save_interval == 0
@@ -355,9 +409,6 @@ def train(args):
                 'model_state_dict': agent.actor_critic.state_dict(),
                 'optimizer_state_dict': agent.optimizer.state_dict(),
             }, os.path.join(args.save_dir, "agent" + log_file + ".pt"))
-
-        end_time_ms = time.perf_counter() * 1000
-        print("Time for {} steps: {} ms".format(args.num_steps, end_time_ms - start_time_ms))
 
 
 if __name__ == "__main__":

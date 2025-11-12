@@ -85,7 +85,7 @@ class Args:
     minibatch_size = int(batch_size // num_minibatches)
     num_iterations = total_timesteps // batch_size
     run_name = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    output_dir = os.path.join("outputs", run_name)
+    output_dir: str = os.path.join("outputs", run_name)
 
 
 if __name__ == "__main__":

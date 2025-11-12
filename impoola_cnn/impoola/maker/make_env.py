@@ -131,7 +131,7 @@ def make_procgen_env(args, full_distribution=False, normalize_reward=False, rand
     # Num levels is 200 for easy games and 1000 for hard games when running in general track
     start_level = 0
 
-    num_levels = 200 if distribution_mode == "easy" else 500
+    num_levels = 50 if distribution_mode == "easy" else 500
     num_levels = 0 if full_distribution else num_levels
 
     if num_levels_override is not None:
