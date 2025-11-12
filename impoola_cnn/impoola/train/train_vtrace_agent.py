@@ -90,6 +90,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 c_bar=c_bar,
                 actions=actions.reshape(T * N)
             )
+            pg_adv = (pg_adv - pg_adv.mean()) / (pg_adv.std() + 1e-8)
 
             flat_target_pi = torch.distributions.Categorical(logits=target_logits_flat)
             logp = flat_target_pi.log_prob(actions.reshape(T * N)).view(T, N)

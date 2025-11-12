@@ -43,7 +43,7 @@ class Args:
     learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 64  # 96
+    num_envs: int =90  # 96
     unroll_length: int = 20 # 20
     gamma: float = 0.99
 
@@ -51,7 +51,6 @@ class Args:
     vf_coef: float = 0.5
 
     max_grad_norm: float = 0.5
-    norm_adv: bool = True
 
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
@@ -63,7 +62,6 @@ class Args:
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
     activation: str = 'relu'  # relu
-    rescale_lr_by_scale: bool = True
 
     n_datapoints_csv: int = 500
 
@@ -147,10 +145,6 @@ if __name__ == "__main__":
             weight_decay=args.weight_decay,
             fused=True
         )
-
-        if args.rescale_lr_by_scale:
-            lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
-            optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
 
         if args.load_model_path is not None:
             agent.global_step = load_checkpoint(
