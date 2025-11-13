@@ -231,3 +231,30 @@ class ImpalaCnnReg(nn.Module):
 
     def get_output_shape(self):
         return self.base.get_output_shape()
+    
+class RNDModel(nn.Module):
+    """Simple RND module with a target (fixed) and predictor (trainable).
+    Uses small conv encoder + adaptive pooling to support arbitrary image sizes.
+    """
+    def __init__(self, obs_shape, rnd_output_size=128):
+        super().__init__()
+        c, h, w = obs_shape
+        self.predictor = nn.Sequential(
+            nn.Conv2d(c, 32, 8, stride=4, padding=0), nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1,1)),
+            nn.Flatten(),
+            nn.Linear(64, rnd_output_size)
+        )
+        self.target = nn.Sequential(
+            nn.Conv2d(c, 32, 8, stride=4, padding=0), nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1,1)),
+            nn.Flatten(),
+            nn.Linear(64, rnd_output_size)
+        )
+        # Freeze target parameters
+        for p in self.target.parameters():
+            p.requires_grad = False
