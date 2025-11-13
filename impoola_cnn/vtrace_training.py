@@ -43,15 +43,14 @@ class Args:
     learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int = 64  # 96
-    unroll_length: int = 30 # 20
+    num_envs: int =90  # 96
+    unroll_length: int = 20 # 20
     gamma: float = 0.99
 
     ent_coef: float = 0.01
     vf_coef: float = 0.5
 
     max_grad_norm: float = 0.5
-    norm_adv: bool = True
 
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
@@ -63,7 +62,6 @@ class Args:
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
     activation: str = 'relu'  # relu
-    rescale_lr_by_scale: bool = True
 
     n_datapoints_csv: int = 500
 
@@ -76,7 +74,7 @@ class Args:
     p_augment: float = 0.0
     micro_dropout_p: float = 0.01
 
-    drac_lambda = 0.05
+    drac_lambda = 0.0
 
     load_model_path: Optional[str] = None
 
@@ -138,12 +136,6 @@ if __name__ == "__main__":
             micro_dropout_p=args.micro_dropout_p
         ).to(device)
 
-        with torch.no_grad():
-            example_input = 127 * np.ones((1,) + envs.single_observation_space.shape).astype(
-                envs.single_observation_space.dtype)
-            example_input = torch.tensor(example_input).to(device)
-            agent.get_action_and_value(example_input)
-
         # statistics, total_params, m_macs, param_bytes = network_summary(agent, example_input, device)
 
         optimizer = optim.Adam(
@@ -153,10 +145,6 @@ if __name__ == "__main__":
             weight_decay=args.weight_decay,
             fused=True
         )
-
-        if args.rescale_lr_by_scale:
-            lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
-            optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
 
         if args.load_model_path is not None:
             agent.global_step = load_checkpoint(

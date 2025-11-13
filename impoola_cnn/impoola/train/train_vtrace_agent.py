@@ -90,13 +90,19 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 c_bar=c_bar,
                 actions=actions.reshape(T * N)
             )
+            # pg_adv = (pg_adv - pg_adv.mean()) / (pg_adv.std() + 1e-8)
 
             flat_target_pi = torch.distributions.Categorical(logits=target_logits_flat)
             logp = flat_target_pi.log_prob(actions.reshape(T * N)).view(T, N)
             entropy = flat_target_pi.entropy().view(T, N)
 
             policy_loss = -(pg_adv.detach() * logp).mean()
-            value_loss = 0.5 * (values - vs.detach()).pow(2).mean()
+
+            target_values = target_values_flat.reshape(T_, N_)
+
+            criterion = torch.nn.MSELoss()
+            value_loss = criterion(vs, target_values.detach())
+
             entropy_loss = entropy.mean()
 
             loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
@@ -124,7 +130,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            nn.utils.clip_grad_norm_(agent.parameters(), torch.tensor(args.max_grad_norm, device=device))
+            nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
             optimizer.step()
 
             eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
