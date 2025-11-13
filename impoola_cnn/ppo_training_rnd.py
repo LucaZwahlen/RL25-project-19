@@ -16,7 +16,7 @@ from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
                                                              progcen_hns)
 from impoola_cnn.impoola.maker.make_env import make_an_env, make_procgen_env
 from impoola_cnn.impoola.train.agents import PPOAgent
-from impoola_cnn.impoola.train.train_ppo_agent import train_ppo_agent
+from impoola_cnn.impoola.train.train_ppo_agent_rnd import train_ppo_agent
 from impoola_cnn.impoola.utils.csv_logging import Logger
 from impoola_cnn.impoola.utils.environment_knowledge import TEST_ENV_RANGE
 from impoola_cnn.impoola.utils.save_load import save_checkpoint
@@ -70,7 +70,6 @@ class Args:
     activation: str = 'relu'
     rescale_lr_by_scale: bool = True
 
-
     # RND (Random Network Distillation) settings
     use_rnd: bool = True
     rnd_coef: float = 0.05       # scale of intrinsic reward added to extrinsic reward
@@ -86,12 +85,13 @@ class Args:
 
     p_augment: float = 0.0
     micro_dropout_p: float = 0.0
+    drac_lambda = 0.0
 
     batch_size = int(num_envs * num_steps)
     minibatch_size = int(batch_size // num_minibatches)
     num_iterations = total_timesteps // batch_size
     run_name = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    output_dir = os.path.join("outputs", run_name)
+    output_dir: str = os.path.join("outputs", run_name)
 
 
 if __name__ == "__main__":
