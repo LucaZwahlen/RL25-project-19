@@ -7,11 +7,11 @@ import torch
 import torch.nn as nn
 from tqdm import trange
 
+from impoola_cnn.impoola.train.nn import RNDModel
 from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
                                                    Logger)
 from impoola_cnn.impoola.utils.evaluate_test_performance import \
     evaluate_test_performance
-from impoola_cnn.impoola.train.nn import RNDModel
 
 
 def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
@@ -54,7 +54,6 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
     next_obs = torch.tensor(next_obs, device=device)
     next_done = torch.zeros(args.num_envs, device=device, dtype=torch.bool)
 
-
     # ----- RND initialization (Random Network Distillation) -----
     if args.use_rnd:
         # observations are already normalized according to your confirmation
@@ -94,13 +93,14 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
 
             # Compute RND intrinsic reward and add to environment reward (observations already normalized)
             if args.use_rnd:
-                #normalize next obs
+                # normalize next obs
                 next_obs = next_obs.float() / 255.0
 
                 # next_obs: (num_envs, C, H, W)
                 with torch.no_grad():
                     target_feat = rnd.target(next_obs)
-                pred_feat = rnd.predictor(next_obs)
+                    pred_feat = rnd.predictor(next_obs)
+
                 intrinsic_reward = (target_feat - pred_feat).pow(2).mean(dim=1)
                 # rewards[step] shape is (num_envs,)
                 rewards[step] += args.rnd_coef * intrinsic_reward
@@ -125,7 +125,6 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
 
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
-
 
         # ----- Train RND predictor on the collected observations (Option A: all collected observations) -----
         if args.use_rnd:
