@@ -12,32 +12,6 @@ from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
                                                    Logger)
 from impoola_cnn.impoola.utils.evaluate_test_performance import \
     evaluate_test_performance
-class RNDModel(nn.Module):
-    """Simple RND module with a target (fixed) and predictor (trainable).
-    Uses small conv encoder + adaptive pooling to support arbitrary image sizes.
-    """
-    def __init__(self, obs_shape, rnd_output_size=128):
-        super().__init__()
-        c, h, w = obs_shape
-        self.predictor = nn.Sequential(
-            nn.Conv2d(c, 32, 8, stride=4, padding=0), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1,1)),
-            nn.Flatten(),
-            nn.Linear(64, rnd_output_size)
-        )
-        self.target = nn.Sequential(
-            nn.Conv2d(c, 32, 8, stride=4, padding=0), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1,1)),
-            nn.Flatten(),
-            nn.Linear(64, rnd_output_size)
-        )
-        # Freeze target parameters
-        for p in self.target.parameters():
-            p.requires_grad = False
 
 
 def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
@@ -81,14 +55,6 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
 
     next_obs = torch.tensor(next_obs, device=device)
     next_done = torch.zeros(args.num_envs, device=device, dtype=torch.bool)
-    #RND stuff initialization
-    if args.use_rnd:
-        # observations are already normalized according to your confirmation
-        rnd = RNDModel(envs.single_observation_space.shape, args.rnd_output_size).to(device)
-        rnd_optimizer = torch.optim.Adam(rnd.predictor.parameters(), lr=args.rnd_lr)
-    else:
-        rnd = None
-        rnd_optimizer = None
     for iteration in trange(1, args.num_iterations + 1):
 
         if args.anneal_lr:
@@ -117,17 +83,6 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
             next_obs = torch.tensor(next_obs, device=device)
             next_done = torch.tensor(next_done, device=device, dtype=torch.bool)
 
-            # Compute RND intrinsic reward and add to environment reward
-            if args.use_rnd:
-                # next_obs: (num_envs, C, H, W)
-                with torch.no_grad():
-                    target_feat = rnd.target(next_obs)
-                pred_feat = rnd.predictor(next_obs)
-                intrinsic_reward = (target_feat - pred_feat).pow(2).mean(dim=1)
-                # rewards[step] shape is (num_envs,)
-                rewards[step] += args.rnd_coef * intrinsic_reward
-
-
             episodeQueueCalculator.update(action, rewards[step])
 
             # Collect training episode rewards
@@ -148,16 +103,6 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
 
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
-        #train the RND predictor network
-        if args.use_rnd:
-            # b_obs is shape (batch_size, C, H, W) and already on device
-            rnd_optimizer.zero_grad()
-            pred_feat = rnd.predictor(b_obs)
-            with torch.no_grad():
-                target_feat = rnd.target(b_obs)
-            rnd_loss = (pred_feat - target_feat).pow(2).mean()
-            rnd_loss.backward()
-            rnd_optimizer.step()
         # Optimizing the policy and value network
         total_policy_loss = 0
         total_value_loss = 0
