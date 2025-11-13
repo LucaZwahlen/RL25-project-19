@@ -81,7 +81,7 @@ parser.add_argument(
 parser.add_argument(
     '--save_interval',
     type=int,
-    default=1,
+    default=250,
     help='save interval, one save per n update')
 parser.add_argument(
     '--num_env_steps',

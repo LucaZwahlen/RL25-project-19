@@ -33,6 +33,7 @@ def evaluate(args, actor_critic, device, num_processes=64, aug_id=None):
 
     obs, _ = test_envs.reset()
     obs = torch.tensor(obs, device=device, dtype=torch.float32)
+    obs = obs / 255.0
 
     eval_recurrent_hidden_states = torch.zeros(
         num_processes, actor_critic.recurrent_hidden_state_size, device=device)
@@ -48,6 +49,7 @@ def evaluate(args, actor_critic, device, num_processes=64, aug_id=None):
 
         obs, reward, terminated, truncated, info = test_envs.step(action.cpu().numpy().squeeze(-1))
         obs = torch.tensor(obs, dtype=torch.float32, device=device)
+        obs = obs / 255.0
 
         episodeQueueCalculator.update(action.squeeze(-1), torch.tensor(reward, device=device).view(-1))
         done = np.logical_or(terminated, truncated)
