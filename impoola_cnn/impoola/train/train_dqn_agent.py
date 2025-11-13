@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from collections import deque
 
 import numpy as np
@@ -7,10 +8,10 @@ import torch
 import torch.nn.functional as F
 from tqdm import trange
 
-from impoola_cnn.impoola.utils.csv_logging import log_sit_style_csv
-from impoola_cnn.impoola.utils.evaluate_test_performance import evaluate_test_performance
-from impoola_cnn.impoola.utils.utils import linear_schedule
-from impoola_cnn.impoola.utils.utils import StopTimer
+from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator
+from impoola_cnn.impoola.utils.evaluate_test_performance import \
+    evaluate_test_performance
+from impoola_cnn.impoola.utils.utils import StopTimer, linear_schedule
 
 
 def make_replay_buffer(args, envs, device):
@@ -34,10 +35,12 @@ def make_replay_buffer(args, envs, device):
     return replay_buffer
 
 
-def train_dqn_agent(args, envs, agent, optimizer, device):
+def train_dqn_agent(args, logger, envs, agent, optimizer, device):
     q_network, target_network = agent
 
-    training_episode_rewards = deque(maxlen=100)
+    # Track training episode statistics
+    episodeQueueCalculator = EpisodeQueueCalculator('train', args.seed, args.normalize_reward,
+                                                    100, args.env_id, args.num_envs, args.distribution_mode, device)
 
     update_count = 0
 
@@ -78,8 +81,8 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
 
     duration_linear_schedule = args.exploration_fraction * args.total_timesteps
 
-    stop_timer = StopTimer()
-    stop_timer.start()
+    cumulative_training_time = 0.0
+    iteration_start_time = time.time()
 
     while global_step < args.total_timesteps:
         epsilon = linear_schedule(args.start_e, args.end_e, duration_linear_schedule, global_step)
@@ -108,10 +111,10 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
         global_step += envs.num_envs
         bar.n = global_step
         bar.refresh()
+        episodeQueueCalculator.update(actions, torch.tensor(rewards, device=device).view(-1))
 
         if "_episode" in info.keys():
-            completed_episodes = info["episode"]["r"][info["_episode"]]
-            training_episode_rewards.extend(completed_episodes)
+            episodeQueueCalculator.extend(info)
 
         if global_step > args.learning_starts:
 
@@ -133,31 +136,71 @@ def train_dqn_agent(args, envs, agent, optimizer, device):
 
                 eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
                 do_eval = args.num_iterations == 0 or (update_count % eval_interval == 0) or (
-                        update_count == args.num_iterations)
+                    update_count == args.num_iterations)
                 if do_eval:
-                    current_training_time = stop_timer.get_elapsed_time()
+                    avg_policy_loss = loss.item()
+                    avg_value_loss = 0.0
+                    avg_entropy_loss = old_val.mean().item()
 
-                    stop_timer.stop()
-                    test_mean, test_median = evaluate_test_performance(q_network, args, device)
-                    stop_timer.start()
+                    iteration_end_time = time.time()
+                    cumulative_training_time += (iteration_end_time - iteration_start_time)
 
-                    train_mean_reward = np.mean(training_episode_rewards) if len(training_episode_rewards) > 0 else 0.0
-                    train_median_reward = np.median(training_episode_rewards) if len(
-                        training_episode_rewards) > 0 else 0.0
+                    # force rdm here, since for some fucking reason dqn does not randomize the np randomizer.
+                    simple, detailed = evaluate_test_performance(q_network, args, device, True)
 
-                    log_sit_style_csv(
-                        os.path.join(args.output_dir, "sit_format.csv"),
-                        loss.item(),  # td_loss (equivalent to action_loss)
-                        old_val.mean().item(),  # q_values (equivalent to dist_entropy)
-                        0.0,  # value_loss (not applicable for DQN, set to 0)
-                        test_mean,  # test_mean
-                        test_median,  # test_median
-                        train_mean_reward,  # train_mean
-                        train_median_reward,  # train_median
-                        update_count,  # nupdates
-                        global_step,  # total_steps
-                        current_training_time  # training_time (BEFORE test eval)
+                    test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = simple
+                    test_rewards, test_num_ticks, test_num_steps, test_is_success, test_spl_terms, _ = detailed
+
+                    train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
+
+                    logger.log(
+                        avg_policy_loss,
+                        avg_entropy_loss,
+                        avg_value_loss,
+                        test_mean_reward,
+                        test_median_reward,
+                        test_levels,
+                        test_count,
+                        test_ticks,
+                        test_steps,
+                        test_success,
+                        test_spl,
+                        train_mean_reward,
+                        train_median_reward,
+                        train_levels,
+                        train_count,
+                        train_ticks,
+                        train_steps,
+                        train_success,
+                        train_spl,
+                        global_step,
+                        global_step,
+                        cumulative_training_time
                     )
+
+                    if args.extensive_logging:
+                        train_rewards, train_num_ticks, train_num_steps, train_is_success, train_spl_terms, _ = episodeQueueCalculator.get_raw_counts()
+
+                        logger.log_extensive(
+                            avg_policy_loss,
+                            avg_entropy_loss,
+                            avg_value_loss,
+                            test_rewards,
+                            test_num_ticks,
+                            test_num_steps,
+                            test_is_success,
+                            test_spl_terms,
+                            train_rewards,
+                            train_num_ticks,
+                            train_num_steps,
+                            train_is_success,
+                            train_spl_terms,
+                            global_step,
+                            global_step,
+                            cumulative_training_time
+                        )
+
+                    iteration_start_time = time.time()
 
             # update target network
             if global_step % args.target_network_frequency == 0:

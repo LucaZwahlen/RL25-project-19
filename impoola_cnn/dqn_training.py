@@ -17,13 +17,16 @@ from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
 from impoola_cnn.impoola.maker.make_env import make_an_env
 from impoola_cnn.impoola.train.agents import DQNAgent
 from impoola_cnn.impoola.train.train_dqn_agent import train_dqn_agent
-from impoola_cnn.impoola.utils.csv_logging import init_files
+from impoola_cnn.impoola.utils.csv_logging import Logger
 from impoola_cnn.impoola.utils.save_load import save_checkpoint
 from impoola_cnn.impoola.utils.utils import get_device
 
 
 @dataclass
 class Args:
+
+    extensive_logging: bool = True  # whether to log detailed per-episode data
+
     # General Settings
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     seed: int = 1
@@ -76,15 +79,15 @@ class Args:
 
     num_iterations = total_timesteps // num_envs // train_frequency
     run_name = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    output_dir = os.path.join("outputs", run_name)
+    output_dir: str = os.path.join("outputs", run_name)
 
-    n_datapoints_csv: int = 0
+    n_datapoints_csv: int = 500
 
 
 if __name__ == "__main__":
 
     args = tyro.cli(Args)
-    init_files(args)
+    logger = Logger(args)
 
     global progcen_hns
     if args.distribution_mode == "easy":
@@ -169,8 +172,9 @@ if __name__ == "__main__":
 
     target_network.load_state_dict(q_network.state_dict())
 
-    envs, q_network, global_step, b_obs = train_dqn_agent(args, envs, (q_network, target_network), optimizer, device)
+    envs, q_network, global_step, b_obs = train_dqn_agent(args, logger, envs, (q_network, target_network), optimizer, device)
     envs.close()
+    logger.close()
     agent = q_network
 
     save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, 'checkpoint_final')

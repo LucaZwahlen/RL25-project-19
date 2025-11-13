@@ -94,12 +94,12 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
             # Compute RND intrinsic reward and add to environment reward (observations already normalized)
             if args.use_rnd:
                 # normalize next obs
-                next_obs = next_obs.float() / 255.0
+                next_obs_nrm = next_obs.float() / 255.0
 
                 # next_obs: (num_envs, C, H, W)
                 with torch.no_grad():
-                    target_feat = rnd.target(next_obs)
-                    pred_feat = rnd.predictor(next_obs)
+                    target_feat = rnd.target(next_obs_nrm)
+                    pred_feat = rnd.predictor(next_obs_nrm)
 
                 intrinsic_reward = (target_feat - pred_feat).pow(2).mean(dim=1)
                 # rewards[step] shape is (num_envs,)
@@ -129,10 +129,12 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
         # ----- Train RND predictor on the collected observations (Option A: all collected observations) -----
         if args.use_rnd:
             # b_obs is shape (batch_size, C, H, W) and already on device
+            b_obs_normalized = b_obs.float() / 255.0
+
             rnd_optimizer.zero_grad()
-            pred_feat = rnd.predictor(b_obs)
+            pred_feat = rnd.predictor(b_obs_normalized)
             with torch.no_grad():
-                target_feat = rnd.target(b_obs)
+                target_feat = rnd.target(b_obs_normalized)
             rnd_loss = (pred_feat - target_feat).pow(2).mean()
             rnd_loss.backward()
             rnd_optimizer.step()

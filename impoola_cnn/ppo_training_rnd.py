@@ -41,7 +41,7 @@ class Args:
     training_eval_ratio: float = 0.01
     normalize_reward: bool = True
 
-    env_id: str = "fruitbot"
+    env_id: str = "chaser"
     distribution_mode: str = "easy"
     total_timesteps: int = int(25e6)
     learning_rate: float = 3.5e-4
@@ -72,9 +72,9 @@ class Args:
 
     # RND (Random Network Distillation) settings
     use_rnd: bool = True
-    rnd_coef: float = 0.05       # scale of intrinsic reward added to extrinsic reward
-    rnd_output_size: int = 128   # output embedding size for RND target/predictor
-    rnd_lr: float = 1e-4         # learning rate for RND predictor
+    rnd_coef: float = 0.1       # scale of intrinsic reward added to extrinsic reward
+    rnd_output_size: int = 64   # output embedding size for RND target/predictor
+    rnd_lr: float = 1e-3         # learning rate for RND predictor
 
     # ReDo settings
     redo_tau: float = 0.025
