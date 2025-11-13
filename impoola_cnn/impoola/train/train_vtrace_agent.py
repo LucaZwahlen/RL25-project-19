@@ -90,7 +90,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 c_bar=c_bar,
                 actions=actions.reshape(T * N)
             )
-            pg_adv = (pg_adv - pg_adv.mean()) / (pg_adv.std() + 1e-8)
+            # pg_adv = (pg_adv - pg_adv.mean()) / (pg_adv.std() + 1e-8)
 
             flat_target_pi = torch.distributions.Categorical(logits=target_logits_flat)
             logp = flat_target_pi.log_prob(actions.reshape(T * N)).view(T, N)
@@ -99,7 +99,9 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             policy_loss = -(pg_adv.detach() * logp).mean()
 
             target_values = target_values_flat.reshape(T_, N_)
-            value_loss = 0.5 * (target_values - vs.detach()).pow(2).mean()
+
+            criterion = torch.nn.MSELoss()
+            value_loss = criterion(vs, target_values.detach())
 
             entropy_loss = entropy.mean()
 
