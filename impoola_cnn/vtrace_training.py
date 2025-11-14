@@ -33,7 +33,7 @@ class Args:
     n_episodes_rollout: int = int(2.5e3)
     deterministic_rollout: bool = False
 
-    training_eval_ratio: float = 0.095
+    training_eval_ratio: float = 0.01
     normalize_reward: bool = True
 
     env_id: str = "chaser"  # chaser
@@ -47,7 +47,7 @@ class Args:
     unroll_length: int = 20 # 20
     gamma: float = 0.99
 
-    ent_coef: float = 0.01
+    ent_coef: float = 0.0095
     vf_coef: float = 0.5
 
     max_grad_norm: float = 0.5
@@ -72,7 +72,7 @@ class Args:
     output_dir: str = os.path.join("outputs", run_name)
 
     p_augment: float = 0.0
-    micro_dropout_p: float = 0.01
+    micro_dropout_p: float = 0.0
 
     drac_lambda = 0.0
 
