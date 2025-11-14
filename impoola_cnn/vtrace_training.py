@@ -74,7 +74,7 @@ class Args:
     p_augment: float = 0.0
     micro_dropout_p: float = 0.0
 
-    drac_lambda = 0.0
+    drac_lambda: float = 0.0
 
     load_model_path: Optional[str] = None
 
