@@ -24,7 +24,7 @@ from impoola_cnn.impoola.utils.utils import get_device
 
 @dataclass
 class Args:
-    extensive_logging: bool = True  # whether to log detailed per-episode data
+    extensive_logging: bool = False  # whether to log detailed per-episode data
 
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     seed: int = 1
@@ -33,14 +33,14 @@ class Args:
     n_episodes_rollout: int = int(2.5e3)
     deterministic_rollout: bool = False
 
-    training_eval_ratio: float = 0.01
+    training_eval_ratio: float = 0.095
     normalize_reward: bool = True
 
     env_id: str = "chaser"  # chaser
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
-    learning_rate: float = 6.0e-4
+    learning_rate: float = 5.0e-4
     anneal_lr: bool = False
 
     num_envs: int =90  # 96
@@ -63,7 +63,7 @@ class Args:
     cnn_filters: tuple = (16, 32, 32)
     activation: str = 'relu'  # relu
 
-    n_datapoints_csv: int = 500
+    n_datapoints_csv: int = 250
 
     batch_size = int(num_envs * unroll_length)
     num_iterations = total_timesteps // batch_size
