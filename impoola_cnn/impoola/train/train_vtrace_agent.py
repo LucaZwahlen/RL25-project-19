@@ -99,9 +99,8 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             policy_loss = -(pg_adv.detach() * logp).mean()
 
             target_values = target_values_flat.reshape(T_, N_)
-
-            criterion = torch.nn.MSELoss()
-            value_loss = criterion(vs.detach(), target_values)
+            vs = vs.reshape(T_, N_).to(dtype=target_values_flat.dtype)
+            value_loss = 0.5 * (target_values - vs.detach()).pow(2).mean()
 
             entropy_loss = entropy.mean()
 
