@@ -101,7 +101,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             target_values = target_values_flat.reshape(T_, N_)
 
             criterion = torch.nn.MSELoss()
-            value_loss = criterion(vs, target_values.detach())
+            value_loss = criterion(vs.detach(), target_values)
 
             entropy_loss = entropy.mean()
 
