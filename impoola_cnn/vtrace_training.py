@@ -40,14 +40,14 @@ class Args:
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
-    learning_rate: float = 5.0e-4
+    learning_rate: float = 6.0e-4
     anneal_lr: bool = False
 
-    num_envs: int =90  # 96
+    num_envs: int = 90 # 96
     unroll_length: int = 20 # 20
     gamma: float = 0.99
 
-    ent_coef: float = 0.0095
+    ent_coef: float = 0.01
     vf_coef: float = 0.5
 
     max_grad_norm: float = 0.5
