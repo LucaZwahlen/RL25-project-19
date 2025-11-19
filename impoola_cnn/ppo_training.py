@@ -30,7 +30,7 @@ class Args:
 
     # all knowning
     is_all_knowing: bool = False
-    move_penalty: float = 0.05
+    move_penalty: float = 0.01
 
     # General Settings
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
@@ -41,7 +41,7 @@ class Args:
     training_eval_ratio: float = 0.01
     normalize_reward: bool = True
 
-    env_id: str = "fruitbot"
+    env_id: str = "chaser"
     distribution_mode: str = "easy"
     total_timesteps: int = int(25e6)
     learning_rate: float = 3.5e-4
