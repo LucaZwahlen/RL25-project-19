@@ -6,14 +6,18 @@ import torch.nn as nn
 from tqdm import trange
 
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
-from impoola_cnn.impoola.utils.DRAC import DRACTransformChaserFruitbot, remap_logprobs_for_flip
-from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator, Logger)
-from impoola_cnn.impoola.utils.evaluate_test_performance import evaluate_test_performance
+from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
+                                                   Logger)
+from impoola_cnn.impoola.utils.DRAC import (DRACTransformChaserFruitbot,
+                                            DRACTransformColor,
+                                            remap_logprobs_for_flip)
+from impoola_cnn.impoola.utils.evaluate_test_performance import \
+    evaluate_test_performance
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
     try:
-        drac_transform = DRACTransformChaserFruitbot().to(device)
+        drac_transform = DRACTransformColor(device).to(device)
 
         T = args.unroll_length
         N = args.num_envs
@@ -120,11 +124,19 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 dist_flip = torch.distributions.Categorical(logits=pi_t.logits)
 
                 logp_clean = dist_clean.log_prob(flat_actions)
-                logp_flip = remap_logprobs_for_flip(
-                    dist_flip,
-                    flat_actions
-                )
+                logp_flip = dist_flip.log_prob(flat_actions)  # Same actions!
+
+                # logp_flip = remap_logprobs_for_flip(
+                #     dist_flip,
+                #     flat_actions
+                # )
                 drac_policy_loss = -(logp_clean.detach() - logp_flip).mean()
+                drac_policy_loss = torch.clamp(drac_policy_loss, -5.0, 5.0)
+
+            # print losses with 6 decimal places
+                print(f"{logp_clean.mean().item():.6f}", f"{logp_flip.mean().item():.6f}", f"{drac_policy_loss.item():.6f}",
+                      f"{drac_value_loss.item():.6f}", f"{value_loss.item():.6f}", f"{policy_loss.item():.6f}")
+
                 loss = loss + args.drac_lambda * (drac_value_loss + drac_policy_loss)
 
             optimizer.zero_grad(set_to_none=True)
@@ -197,7 +209,6 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                     )
 
                 iteration_start_time = time.time()
-
 
     except KeyboardInterrupt:
         pass
