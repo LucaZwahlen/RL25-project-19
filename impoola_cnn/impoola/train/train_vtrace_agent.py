@@ -114,7 +114,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 pi_t, values_t = agent.get_pi_and_value(obs_t)
 
                 values_t = values_t.squeeze(-1)
-                drac_value_loss = (val_full.detach() - values_t).pow(2).mean()
+                drac_value_loss = 0.5 * (val_full.detach() - values_t).pow(2).mean()
 
                 dist_clean = torch.distributions.Categorical(logits=logits_full)
                 dist_flip = torch.distributions.Categorical(logits=pi_t.logits)
@@ -124,7 +124,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                     dist_flip,
                     flat_actions
                 )
-                drac_policy_loss = (logp_clean.detach() - logp_flip).pow(2).mean()
+                drac_policy_loss = -(logp_clean.detach() - logp_flip).mean()
                 loss = loss + args.drac_lambda * (drac_value_loss + drac_policy_loss)
 
             optimizer.zero_grad(set_to_none=True)
