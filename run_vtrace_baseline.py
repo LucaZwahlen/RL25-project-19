@@ -13,6 +13,7 @@ for env in envs:
             "--seed", str(seed),
             "--env_id", env,
             "--output_dir", f"vtrace_baseline/{exp_name}",
+            "--n_datapoints_csv", "1000"
         ]
         print("Running:", " ".join(cmd), flush=True)
         subprocess.run(cmd)
