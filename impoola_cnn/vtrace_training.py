@@ -36,7 +36,7 @@ class Args:
     training_eval_ratio: float = 0.01
     normalize_reward: bool = True
 
-    env_id: str = "chaser"  # chaser
+    env_id: str = "fruitbot"  # chaser
     distribution_mode: str = "easy"
 
     total_timesteps: int = int(25e6)
@@ -55,7 +55,7 @@ class Args:
     vtrace_rho_bar: float = 1.0
     vtrace_c_bar: float = 2.0
 
-    encoder_type: str = "impala_new"  # impala
+    encoder_type: str = "impala"  # impala
     scale: int = 2
     pruning_type: str = "Baseline"
     weight_decay: float = 0.0e-5

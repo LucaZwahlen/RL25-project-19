@@ -6,18 +6,16 @@ import torch.nn as nn
 from tqdm import trange
 
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
+from impoola_cnn.impoola.utils.DRAC import (DRACTransformChaserFruitbot, remap_logprobs_for_flip, HFLIP_MAP)
 from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
                                                    Logger)
-from impoola_cnn.impoola.utils.DRAC import (DRACTransformChaserFruitbot,
-                                            DRACTransformColor,
-                                            remap_logprobs_for_flip)
 from impoola_cnn.impoola.utils.evaluate_test_performance import \
     evaluate_test_performance
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
     try:
-        drac_transform = DRACTransformColor(device).to(device)
+        drac_transform = DRACTransformChaserFruitbot().to(device)
 
         T = args.unroll_length
         N = args.num_envs
@@ -82,6 +80,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             target_logits_flat = target_pi.logits
             target_logits = target_logits_flat.reshape(T_, N_, -1)
 
+            flat_actions = actions.reshape(T * N)
             vs, pg_adv = compute_vtrace_targets(
                 rewards=rewards,
                 dones=dones,
@@ -92,7 +91,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 gamma=gamma,
                 rho_bar=rho_bar,
                 c_bar=c_bar,
-                actions=actions.reshape(T * N)
+                actions=flat_actions
             )
             # pg_adv = (pg_adv - pg_adv.mean()) / (pg_adv.std() + 1e-8)
 
@@ -111,33 +110,36 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             loss = policy_loss + vf_coef * value_loss - ent_coef * entropy_loss
 
             if args.drac_lambda > 0.0:
-                flat_actions = actions.reshape(T_ * N_)
-                logits_full = target_logits_flat
-                val_full = target_values_flat.squeeze(-1)
-                obs_t = drac_transform(b_obs.reshape(T_ * N_, *envs.single_observation_space.shape))
-                pi_t, values_t = agent.get_pi_and_value(obs_t)
+                with torch.no_grad():
+                    val_full = target_values_flat.squeeze(-1)
+                    obs_t = drac_transform(flat_obs)
 
+                pi_t, values_t = agent.get_pi_and_value(obs_t)
                 values_t = values_t.squeeze(-1)
                 drac_value_loss = 0.5 * (val_full.detach() - values_t).pow(2).mean()
 
-                dist_clean = torch.distributions.Categorical(logits=logits_full)
+                dist_clean = torch.distributions.Categorical(logits=target_logits_flat)
                 dist_flip = torch.distributions.Categorical(logits=pi_t.logits)
 
-                logp_clean = dist_clean.log_prob(flat_actions)
-                logp_flip = dist_flip.log_prob(flat_actions)  # Same actions!
+                with torch.no_grad():
+                    a_clean = dist_clean.sample()
+                    ent_scale = (dist_clean.entropy() / np.log(envs.single_action_space.n)).clamp(0.0, 1.0).mean()
 
-                # logp_flip = remap_logprobs_for_flip(
-                #     dist_flip,
-                #     flat_actions
-                # )
-                drac_policy_loss = -(logp_clean.detach() - logp_flip).mean()
-                drac_policy_loss = torch.clamp(drac_policy_loss, -5.0, 5.0)
+                drac_policy_loss = -remap_logprobs_for_flip(dist_flip, a_clean).mean() * ent_scale
 
-            # print losses with 6 decimal places
-                print(f"{logp_clean.mean().item():.6f}", f"{logp_flip.mean().item():.6f}", f"{drac_policy_loss.item():.6f}",
-                      f"{drac_value_loss.item():.6f}", f"{value_loss.item():.6f}", f"{policy_loss.item():.6f}")
+                ratio = 0.3
+                scale = ratio * policy_loss.detach().abs() / (drac_policy_loss.detach().abs() + 1e-8)
+                scaled_policy_loss = scale * drac_policy_loss
 
-                loss = loss + args.drac_lambda * (drac_value_loss + drac_policy_loss)
+                print("", flush=True)
+                print(f"drac_policy_loss = \t{scaled_policy_loss.item():.12f} ", flush=True)
+                print(f"drac_value_loss = \t{drac_value_loss.item():.12f} ", flush=True)
+                print("", flush=True)
+                print(f"policy_loss = \t{policy_loss.item():.12f}", flush=True)
+                print(f"value_loss = \t{value_loss.item():.12f} ", flush=True)
+                print("", flush=True)
+
+                loss = loss + args.drac_lambda * (drac_value_loss + scaled_policy_loss)
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
