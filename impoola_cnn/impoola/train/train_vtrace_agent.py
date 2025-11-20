@@ -131,13 +131,13 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 scale = ratio * policy_loss.detach().abs() / (drac_policy_loss.detach().abs() + 1e-8)
                 scaled_policy_loss = scale * drac_policy_loss
 
-                print("", flush=True)
-                print(f"drac_policy_loss = \t{scaled_policy_loss.item():.12f} ", flush=True)
-                print(f"drac_value_loss = \t{drac_value_loss.item():.12f} ", flush=True)
-                print("", flush=True)
-                print(f"policy_loss = \t{policy_loss.item():.12f}", flush=True)
-                print(f"value_loss = \t{value_loss.item():.12f} ", flush=True)
-                print("", flush=True)
+                # print("", flush=True)
+                # print(f"drac_policy_loss = \t{scaled_policy_loss.item():.12f} ", flush=True)
+                # print(f"drac_value_loss = \t{drac_value_loss.item():.12f} ", flush=True)
+                # print("", flush=True)
+                # print(f"policy_loss = \t{policy_loss.item():.12f}", flush=True)
+                # print(f"value_loss = \t{value_loss.item():.12f} ", flush=True)
+                # print("", flush=True)
 
                 loss = loss + args.drac_lambda * (drac_value_loss + scaled_policy_loss)
 
