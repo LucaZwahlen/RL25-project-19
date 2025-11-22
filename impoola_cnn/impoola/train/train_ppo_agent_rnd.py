@@ -69,11 +69,14 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * learning_rate
             optimizer.param_groups[0]["lr"].copy_(lrnow)
-
+        if args.use_rnd:
+            intrinsic_rms = RunningMeanStd(shape=(1,)) # for normalizing intrinsic rewards                    
         for step in range(0, args.num_steps):
             global_step += args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
+
+           
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
@@ -102,8 +105,12 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                     pred_feat = rnd.predictor(next_obs_nrm)
 
                 intrinsic_reward = (target_feat - pred_feat).pow(2).mean(dim=1)
+                # normalize the intrinsic reward 
+                intrinsic_rms.update(intrinsic_reward)
+                intrinsic_reward_norm = intrinsic_rms.normalize(intrinsic_reward)
+
                 # rewards[step] shape is (num_envs,)
-                rewards[step] += args.rnd_coef * intrinsic_reward
+                rewards[step] += args.rnd_coef * intrinsic_reward_norm
 
             episodeQueueCalculator.update(action, rewards[step])
 
@@ -244,3 +251,31 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
             iteration_start_time = time.time()
 
     return envs, agent, global_step, b_obs
+
+## helper class for normalization of rnd
+class RunningMeanStd:
+    def __init__(self, epsilon=1e-4, shape=()):
+        self.mean = torch.zeros(shape)
+        self.var = torch.ones(shape)
+        self.count = epsilon
+
+    def update(self, x: torch.Tensor):
+        batch_mean = x.mean()
+        batch_var = x.var(unbiased=False)
+        batch_count = x.numel()
+
+        delta = batch_mean - self.mean
+        tot_count = self.count + batch_count
+
+        new_mean = self.mean + delta * batch_count / tot_count
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        M2 = m_a + m_b + delta**2 * self.count * batch_count / tot_count
+        new_var = M2 / tot_count
+
+        self.mean = new_mean
+        self.var = new_var
+        self.count = tot_count
+
+    def normalize(self, x):
+        return (x - self.mean) / (torch.sqrt(self.var) + 1e-8)
