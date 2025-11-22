@@ -59,6 +59,7 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
         # observations are already normalized according to your confirmation
         rnd = RNDModel(envs.single_observation_space.shape, args.rnd_output_size).to(device)
         rnd_optimizer = torch.optim.Adam(rnd.predictor.parameters(), lr=args.rnd_lr)
+        intrinsic_rms = RunningMeanStd(shape=(1,)) # for normalizing intrinsic rewards      
     else:
         rnd = None
         rnd_optimizer = None
@@ -69,8 +70,7 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * learning_rate
             optimizer.param_groups[0]["lr"].copy_(lrnow)
-        if args.use_rnd:
-            intrinsic_rms = RunningMeanStd(shape=(1,)) # for normalizing intrinsic rewards                    
+                      
         for step in range(0, args.num_steps):
             global_step += args.num_envs
             obs[step] = next_obs
@@ -108,9 +108,11 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                 # normalize the intrinsic reward 
                 intrinsic_rms.update(intrinsic_reward)
                 intrinsic_reward_norm = intrinsic_rms.normalize(intrinsic_reward)
+                intrinsic_reward_norm = torch.clamp(intrinsic_reward_norm, -5, 5)
+
 
                 # rewards[step] shape is (num_envs,)
-                rewards[step] += args.rnd_coef * intrinsic_reward_norm
+                rewards[step] += args.rnd_coef * intrinsic_reward_norm.to(device)
 
             episodeQueueCalculator.update(action, rewards[step])
 
