@@ -15,15 +15,15 @@ def run_experiments():
     # 2. Define arguments shared across all experiments
     # NOTE: We removed "--env-id" from here. We will add it dynamically in the loop.
     common_args = [
-        "--num-envs", "16",
+        "--num-envs", "90",
         "--num-steps", "64",
         "--latent-space-dim", "256",
         "--cnn-filters", "16", "32", "32",
-        "--learning-rate", "0.0003",
+        "--learning-rate", "0.0006",
         "--update-epochs", "1",
         "--num-minibatches", "8",
         "--ent-coef", "0.01",
-        "--total-timesteps", "10000", # Set small for testing, increase for real run
+        "--total-timesteps", "25000000", # Set small for testing, increase for real run
         "--normalize-reward",
         "--seed", "1"
     ]
