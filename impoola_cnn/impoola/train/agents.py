@@ -129,7 +129,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 
-class GRPOAgent(ActorCriticAgent):
+class GRPOAgentflavoured(ActorCriticAgent):
     """
     Extension of PPOAgent with GRPO-safe action/value retrieval.
     """
@@ -166,3 +166,50 @@ class GRPOAgent(ActorCriticAgent):
         logits, value = self.forward(x)
         logits = torch.nan_to_num(logits, nan=0.0, neginf=0.0, posinf=0.0)
         return Categorical(logits=logits), value
+
+import torch
+import torch.nn as nn
+from torch.distributions import Categorical
+
+class GRPOAgent(nn.Module):
+    def __init__(
+        self,
+        encoder_type,
+        envs,
+        width_scale=1,
+        out_features=256,
+        cnn_filters=(16, 32, 32),
+        activation='relu',
+        use_layer_init_normed=False,
+        p_augment=0.0,
+        micro_dropout_p=0.0
+    ):
+        super().__init__()
+        
+        encoder, out_features = encoder_factory(
+            encoder_type=encoder_type,
+            envs=envs,
+            width_scale=width_scale,
+            out_features=out_features,
+            cnn_filters=cnn_filters,
+            activation=activation,
+            use_layer_init_normed=use_layer_init_normed,
+            p_augment=p_augment,
+            micro_dropout_p=micro_dropout_p
+        )
+        self.encoder = encoder
+        self.action_head = layer_init_orthogonal(
+            nn.Linear(out_features, envs.single_action_space.n), 
+            std=0.01
+        )
+
+    def forward(self, x):
+        logits = self.action_head(self.encoder(x))
+        return Categorical(logits=logits)
+
+    def act(self, x):
+        pi = self.forward(x)
+        a = pi.sample()
+        logp = pi.log_prob(a)
+        entropy = pi.entropy()
+        return a, logp, entropy
