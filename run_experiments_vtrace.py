@@ -3,8 +3,8 @@ import sys
 
 
 envs = ["chaser", "fruitbot"]
-drac = [0.025, 0.05, 0.075, 0.1]
-seeds = [0, 1, 2]
+drac = [0.02, 0.04, 0.06, 0.08, 0.1]
+seeds = [0, 1]
 
 for env in envs:
     for s in seeds:
