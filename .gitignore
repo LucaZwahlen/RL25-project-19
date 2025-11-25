@@ -189,3 +189,6 @@ overnight
 *.csv
 *.jsonl
 *.pt
+
+
+plots

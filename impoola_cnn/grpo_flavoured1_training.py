@@ -11,14 +11,12 @@ import torch
 import torch.optim as optim
 import tyro
 
-from impoola_cnn.impoola.eval.normalized_score_lists import (
-    progcen_easy_hns,
-    progcen_hard_hns,
-    progcen_hns,
-)
+from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
+                                                             progcen_hard_hns,
+                                                             progcen_hns)
 from impoola_cnn.impoola.maker.make_env import make_an_env, make_procgen_env
-from impoola_cnn.impoola.train.agents import GRPOAgent
-from impoola_cnn.impoola.train.train_grpo_agent import train_grpo_agent
+from impoola_cnn.impoola.train.agents import GRPOAgentflavoured
+from impoola_cnn.impoola.train.train_grpo_flavoured1_agent import train_grpo_agent
 from impoola_cnn.impoola.utils.csv_logging import Logger
 from impoola_cnn.impoola.utils.environment_knowledge import TEST_ENV_RANGE
 from impoola_cnn.impoola.utils.save_load import save_checkpoint
@@ -29,8 +27,8 @@ from impoola_cnn.impoola.utils.utils import get_device
 class Args:
 
     extensive_logging: bool = True  # whether to log detailed per-episode data
-    group_size: int = 64
-    # all knowing
+
+    # all knowning
     is_all_knowing: bool = False
     move_penalty: float = 0.05
 
@@ -62,10 +60,6 @@ class Args:
     max_grad_norm: float = 0.5
     target_kl: Optional[float] = None
 
-    # GRPO-specific parameters
-    kl_coef: float = 0.01  # KL divergence penalty coefficient between current and reference policy
-    ref_policy_update_freq: int = 10  # Update reference policy every N iterations
-
     # Network specific arguments
     encoder_type: str = "impala"
     scale: int = 2
@@ -73,7 +67,7 @@ class Args:
     weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
-    activation: str = "relu"
+    activation: str = 'relu'
     rescale_lr_by_scale: bool = True
 
     # ReDo settings
@@ -86,10 +80,17 @@ class Args:
     p_augment: float = 0.0
     micro_dropout_p: float = 0.0
 
+    # batch_size = int(num_envs * num_steps)
+    # minibatch_size = int(batch_size // num_minibatches)
+    # num_iterations = total_timesteps // batch_size
+    # run_name = f"{env_id}__{exp_name}__{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    # output_dir = os.path.join("outputs", run_name)
+
 
 if __name__ == "__main__":
 
     args = tyro.cli(Args)
+    
 
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -121,95 +122,63 @@ if __name__ == "__main__":
     print(sub)
     print(f"Run name       : {args.run_name}")
     print(f"Batch size     : {args.batch_size}")
-    print(f"Minibatch size : {args.minibatch_size}")
     print(f"Num iterations : {args.num_iterations}")
-    print(f"Update epochs  : {args.update_epochs}")
-    print(f"KL coefficient : {args.kl_coef}")
-    print(f"Ref policy freq: {args.ref_policy_update_freq}")
     print(f"Outputs dir    : {args.output_dir}")
     print(f"Device         : {device}")
     print(line)
 
-    if device.type == "cuda":
+    if device.type == 'cuda':
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
 
     if args.is_all_knowing:
-        envs = make_procgen_env(
-            args,
-            full_distribution=False,
-            normalize_reward=args.normalize_reward,
-            rand_seed=args.seed,
-            render=False,
-            distribution_mode=args.distribution_mode,
-            num_levels_override=TEST_ENV_RANGE,
-            start_level_override=0,
-        )
+        envs = make_procgen_env(args, full_distribution=False, normalize_reward=args.normalize_reward, rand_seed=args.seed, render=False,
+                                distribution_mode=args.distribution_mode, num_levels_override=TEST_ENV_RANGE, start_level_override=0)
     else:
-        envs = make_an_env(
-            args,
-            seed=args.seed,
-            normalize_reward=args.normalize_reward,
-            full_distribution=False,
-        )
+        envs = make_an_env(args, seed=args.seed,
+                           normalize_reward=args.normalize_reward,
+                           full_distribution=False)
 
-    assert isinstance(
-        envs.single_action_space, gym.spaces.Discrete
-    ), "only discrete action space is supported"
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    agent = GRPOAgent(
+    agent = GRPOAgentflavoured(
         encoder_type=args.encoder_type,
         envs=envs,
-        width_scale=args.scale,
-        out_features=args.latent_space_dim,
-        cnn_filters=args.cnn_filters,
+        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
         p_augment=args.p_augment,
-        micro_dropout_p=args.micro_dropout_p,
+        micro_dropout_p=args.micro_dropout_p
     ).to(device)
+
+    with torch.no_grad():
+        example_input = 127 * np.ones((1,) + envs.single_observation_space.shape).astype(
+            envs.single_observation_space.dtype)
+        example_input = torch.tensor(example_input).to(device)
+        agent.get_action_and_value(example_input)
+
+    # statistics, total_params, m_macs, param_bytes = network_summary(agent, example_input, device)
 
     optimizer = optim.Adam(
         agent.parameters(),
-        lr=float(args.learning_rate),
+        lr=torch.tensor(args.learning_rate, device=device),
         eps=1e-5,  # default eps=1e-8
         weight_decay=args.weight_decay,
-        fused=True,
+        fused=True
     )
 
     if args.rescale_lr_by_scale:
         # LR was set for the default scale of 2, so we need to rescale it
-        optimizer.param_groups[0]['lr'] = optimizer.param_groups[0]['lr'] / (args.scale / 2)
+        lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
+        optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
 
-    print("\n" + "=" * 72)
-    print("Starting GRPO training...")
-    print("=" * 72 + "\n")
-
-    envs, agent, global_step, b_obs = train_grpo_agent(
-        args, logger, envs, agent, optimizer, device
-    )
-    
+    envs, agent, global_step, b_obs = train_grpo_agent(args, logger, envs, agent, optimizer, device)
     envs.close()
     logger.close()
 
     agent = agent.to(device)
 
-    print("\n" + "=" * 72)
     print("Running final detailed evaluation!")
-    print("=" * 72 + "\n")
-    
-    save_checkpoint(
-        agent,
-        optimizer,
-        args,
-        global_step,
-        envs,
-        args.output_dir,
-        args.run_name,
-        "final_checkpoint",
-    )
+    save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, "final_checkpoint")
 
-    print("\n" + "=" * 72)
-    print(f"✓ All training and evaluation complete!")
-    print(f"✓ Files saved to: {args.output_dir}")
-    print("=" * 72 + "\n")
+    print(f"All training and evaluation complete! Files saved to: {args.output_dir}")
