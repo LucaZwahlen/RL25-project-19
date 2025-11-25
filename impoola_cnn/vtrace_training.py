@@ -63,7 +63,7 @@ class Args:
     cnn_filters: tuple = (16, 32, 32)
     activation: str = 'relu'  # relu
 
-    n_datapoints_csv: int = 250
+    n_datapoints_csv: int = 500
 
     batch_size = int(num_envs * unroll_length)
     num_iterations = total_timesteps // batch_size
