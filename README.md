@@ -29,7 +29,7 @@ and compare them against several RL baselines:
 
 - PPO (existing)
 - DQN (existing)
-- GRPO (new)
+- GRPO Flavour(new)
 - V‑Trace (new)
 - PPO with Random Network Distillation (new)
 
@@ -77,7 +77,7 @@ python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True \
 | Algorithm | Test Reward | GG | Success | SPL | Time |
 |----------|-------------|----|---------|-----|------|
 | DQN | 4.09 | 8.73 | 0% | 0% | 01:49:42 |
-| GRPO | 29.23 | 1.09 | 84% | 16% | 00:36:11 |
+| GRPO Flavour | 29.23 | 1.09 | 84% | 16% | 00:36:11 |
 | PPO | 29.29 | 0.80 | 85% | 18% | 00:34:03 |
 | PPO-RND | 20.25 | 0.12 | 50% | 0% | 01:06:52 |
 | **V-Trace** | **29.96** | **0.03** | **89%** | **20%** | **00:20:53** |
@@ -87,7 +87,7 @@ python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True \
 | Algorithm | Test Reward | GG | Success | SPL | Time |
 |----------|-------------|----|---------|-----|------|
 | DQN | 1.89 | 0.77 | 3% | 0% | 02:20:19 |
-| GRPO | 10.81 | 0.31 | 78% | 16% | **00:18:41** |
+| GRPO Flavour | 10.81 | 0.31 | 78% | 16% | **00:18:41** |
 | **PPO** | **11.54** | 1.22 | **84%** | **38%** | 00:56:12 |
 | PPO-RND | 11.28 | 1.27 | 83% | 28% | 01:05:21 |
 | V‑Trace | 10.83 | **0.13** | 78% | 29% | 00:29:26 |
@@ -97,7 +97,7 @@ python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True \
 ## 7. Key Findings
 
 - **V‑Trace** provides the most stable learning and smallest generalization gap.
-- **PPO** and **GRPO** reach strong performance but overfit more strongly.
+- **PPO** and **GRPO Flavour** reach strong performance but overfit more strongly.
 - **DQN** fails on both tasks due to visual complexity.
 - **Dropout** (p = 0.01) offers a mild improvement.
 - **Augmentation** improves generalization but hurts reward.
