@@ -13,7 +13,7 @@ for s in seeds:
             "--exp_name", exp_name,
             "--env_id", env,
             "--encoder_type", "impala",
-            "--output_dir", f"ppo_baseline_3x/{exp_name}",
+            "--output_dir", f"ppo_baseline/{exp_name}",
         ]
         print("Running:", " ".join(cmd), flush=True)
         subprocess.run(cmd)

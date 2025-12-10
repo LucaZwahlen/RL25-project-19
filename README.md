@@ -35,7 +35,6 @@ and compare them against several RL baselines:
 
 Additionally, we evaluate the effect of **DrAC**, **input augmentation**, and **dropout** on generalization performance.
 
-
 ---
 
 ## 4. Installation
@@ -55,18 +54,29 @@ python install.py
 
 ## 5. Training
 
-### IMPooLA / V‑Trace
+### Individual Training
+
+To train a simple SiT or Impoola agent, run the corresponding python files found in [sit](./sit/), and [impoola_cnn](./impoola_cnn/), respectively. Some example commands are listed below.
+
+#### IMPooLA (PPO)
 
 ```bash
 python impoola_cnn/ppo_training.py --env_name fruitbot
 ```
 
-### SiT (example configuration)
+#### SiT (example configuration)
 
 ```bash
-python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True \
-  --choice 0 --run_name SiT --num_mini_batch 96 --ppo_epoch 2 --hidden_size 64
+python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True --choice 0 --run_name SiT --num_mini_batch 96 --ppo_epoch 2 --hidden_size 64
 ```
+
+### Experiments and Baselines
+
+To train similar agents to what our results show, check the [README.md](./experiments/README.md) of the [experiments](./experiments/) folder.
+
+### Evaluation
+
+To help visualize certain results, see the [README.md](./evaluation/README.md) of the [evaluation](./evaluation/) folder.
 
 ---
 
@@ -74,23 +84,23 @@ python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True \
 
 ### Fruitbot
 
-| Algorithm | Test Reward | GG | Success | SPL | Time |
-|----------|-------------|----|---------|-----|------|
-| DQN | 4.09 | 8.73 | 0% | 0% | 01:49:42 |
-| GRPO | 29.23 | 1.09 | 84% | 16% | 00:36:11 |
-| PPO | 29.29 | 0.80 | 85% | 18% | 00:34:03 |
-| PPO-RND | 20.25 | 0.12 | 50% | 0% | 01:06:52 |
-| **V-Trace** | **29.96** | **0.03** | **89%** | **20%** | **00:20:53** |
+| Algorithm   | Test Reward | GG       | Success | SPL     | Time         |
+| ----------- | ----------- | -------- | ------- | ------- | ------------ |
+| DQN         | 4.09        | 8.73     | 0%      | 0%      | 01:49:42     |
+| GRPO        | 29.23       | 1.09     | 84%     | 16%     | 00:36:11     |
+| PPO         | 29.29       | 0.80     | 85%     | 18%     | 00:34:03     |
+| PPO-RND     | 20.25       | 0.12     | 50%     | 0%      | 01:06:52     |
+| **V-Trace** | **29.96**   | **0.03** | **89%** | **20%** | **00:20:53** |
 
 ### Chaser
 
-| Algorithm | Test Reward | GG | Success | SPL | Time |
-|----------|-------------|----|---------|-----|------|
-| DQN | 1.89 | 0.77 | 3% | 0% | 02:20:19 |
-| GRPO | 10.81 | 0.31 | 78% | 16% | **00:18:41** |
-| **PPO** | **11.54** | 1.22 | **84%** | **38%** | 00:56:12 |
-| PPO-RND | 11.28 | 1.27 | 83% | 28% | 01:05:21 |
-| V‑Trace | 10.83 | **0.13** | 78% | 29% | 00:29:26 |
+| Algorithm | Test Reward | GG       | Success | SPL     | Time         |
+| --------- | ----------- | -------- | ------- | ------- | ------------ |
+| DQN       | 1.89        | 0.77     | 3%      | 0%      | 02:20:19     |
+| GRPO      | 10.81       | 0.31     | 78%     | 16%     | **00:18:41** |
+| **PPO**   | **11.54**   | 1.22     | **84%** | **38%** | 00:56:12     |
+| PPO-RND   | 11.28       | 1.27     | 83%     | 28%     | 01:05:21     |
+| V‑Trace   | 10.83       | **0.13** | 78%     | 29%     | 00:29:26     |
 
 ---
 
@@ -107,7 +117,7 @@ python train2.py --env_name fruitbot --device_id 0 --seed 1 --use_sit True \
 
 ## 8. Contributors
 
-- **Luca Zwahlen** 
+- **Luca Zwahlen**
 - **Sandrin Hunkeler**
 - **Sohith Vishnu Sai Yachamaneni**
 - **Jan Zurbrügg**

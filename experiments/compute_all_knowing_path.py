@@ -219,7 +219,7 @@ class ImpoolaPPOActor(GenericActor):
 SEED = 1
 DISTRIBUTION_MODE = "easy"
 NUM_ENVS = 256
-ENV_ID = "fruitbot"
+ENV_ID = "chaser"
 
 
 def eval(actor, device):
