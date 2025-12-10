@@ -182,7 +182,7 @@ sit/logs/
 
 .idea
 venv
-outputs
+outputs_drac
 save
 overnight
 *.json
