@@ -4,7 +4,9 @@ import numpy as np
 
 TEST_ENV_RANGE = 50_000
 SCRIPT_DIR = path.dirname(path.abspath(__file__))
-BASE_PATH = path.abspath(path.join(SCRIPT_DIR, '../eval/all_knowing_path_lengths/all_knowing_path_lengths'))
+BASE_PATH = path.abspath(
+    path.join(SCRIPT_DIR, "../eval/all_knowing_path_lengths/all_knowing_path_lengths")
+)
 
 
 def try_load_file(base_name: str, env_name: str, seed: int, min_lenght: int):
@@ -15,7 +17,9 @@ def try_load_file(base_name: str, env_name: str, seed: int, min_lenght: int):
         if len(data) >= min_lenght:
             return data
         else:
-            print(f"Warning: loaded data from {filename} is too short (length {len(data)}), expected at least {min_lenght}. Using backup.")
+            print(
+                f"Warning: loaded data from {filename} is too short (length {len(data)}), expected at least {min_lenght}. Using backup."
+            )
             return None
     except FileNotFoundError:
         print(f"Warning: file {filename} not found. Using backup.")
@@ -34,7 +38,7 @@ def try_get_optimal_test_path_length(env_name: str, seed: int):
 
 def try_get_optimal_train_path_length(env_name: str, seed: int, distribution_mode: str):
     """Return optimal path length for given environment and distribution mode, if known."""
-    length = 200 if distribution_mode == 'easy' else 500
+    length = 200 if distribution_mode == "easy" else 500
 
     data = try_load_file(BASE_PATH, env_name, seed=seed, min_lenght=length)
     if data is not None:

@@ -10,27 +10,27 @@ def layer_init_orthogonal(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 def activation_factory(activation):
-    if activation == 'relu':
+    if activation == "relu":
         return nn.ReLU(inplace=True)
-    elif activation == 'leaky_relu':
+    elif activation == "leaky_relu":
         return nn.LeakyReLU(inplace=True)
-    elif activation == 'rrelu':
+    elif activation == "rrelu":
         return nn.RReLU(inplace=True)
-    elif activation == 'gelu':
-        return nn.GELU(approximate='tanh')
-    elif activation == 'silu':
+    elif activation == "gelu":
+        return nn.GELU(approximate="tanh")
+    elif activation == "silu":
         return nn.SiLU(inplace=True)
     else:
         raise NotImplementedError
 
 
 def encoder_factory(encoder_type, *args, **kwargs):
-    if encoder_type == 'impala':
+    if encoder_type == "impala":
         model = ImpalaCNN(*args, **kwargs)
-        out_features = kwargs['out_features']
+        out_features = kwargs["out_features"]
         return model, out_features
-    elif encoder_type == 'impala_new':
-        out_features = kwargs['out_features']
+    elif encoder_type == "impala_new":
+        out_features = kwargs["out_features"]
         model = ImpalaCnnReg(*args, **kwargs)
         return model, out_features
     else:
@@ -38,12 +38,22 @@ def encoder_factory(encoder_type, *args, **kwargs):
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, channels, scale, use_layer_init_normed=False, activation='relu'):
+    def __init__(self, channels, scale, use_layer_init_normed=False, activation="relu"):
         super().__init__()
         kernel_size = 3
-        conv0 = nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=kernel_size, padding='same')
+        conv0 = nn.Conv2d(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=kernel_size,
+            padding="same",
+        )
         self.conv0 = conv0
-        conv1 = nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=kernel_size, padding='same')
+        conv1 = nn.Conv2d(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=kernel_size,
+            padding="same",
+        )
         self.conv1 = conv1
         self.activation0 = activation_factory(activation)
         self.activation1 = activation_factory(activation)
@@ -58,22 +68,41 @@ class ResidualBlock(nn.Module):
 
 
 class ConvSequence(nn.Module):
-    def __init__(self, input_shape, out_channels, scale, use_layer_init_normed=False, activation='relu', ):
+    def __init__(
+        self,
+        input_shape,
+        out_channels,
+        scale,
+        use_layer_init_normed=False,
+        activation="relu",
+    ):
         super().__init__()
         self._input_shape = input_shape
         self._out_channels = out_channels
 
-        conv = nn.Conv2d(in_channels=self._input_shape[0], out_channels=self._out_channels, kernel_size=3,
-                         padding="same")
+        conv = nn.Conv2d(
+            in_channels=self._input_shape[0],
+            out_channels=self._out_channels,
+            kernel_size=3,
+            padding="same",
+        )
         self.conv = conv
         self.pooling = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         nblocks = 2
         scale = scale / np.sqrt(nblocks)
-        self.res_block0 = ResidualBlock(self._out_channels, scale=scale, use_layer_init_normed=use_layer_init_normed,
-                                        activation=activation)
-        self.res_block1 = ResidualBlock(self._out_channels, scale=scale, use_layer_init_normed=use_layer_init_normed,
-                                        activation=activation)
+        self.res_block0 = ResidualBlock(
+            self._out_channels,
+            scale=scale,
+            use_layer_init_normed=use_layer_init_normed,
+            activation=activation,
+        )
+        self.res_block1 = ResidualBlock(
+            self._out_channels,
+            scale=scale,
+            use_layer_init_normed=use_layer_init_normed,
+            activation=activation,
+        )
 
     def forward(self, x):
         x = self.conv(x)
@@ -89,26 +118,33 @@ class ConvSequence(nn.Module):
 
 class ImpalaCNN(nn.Module):
     def __init__(
-            self,
-            envs,
-            width_scale=1,
-            out_features=256,
-            cnn_filters=(16, 32, 32),
-            activation='relu',
-            use_layer_init_normed=False,
-            p_augment=0.0,
-            micro_dropout_p=0.0
+        self,
+        envs,
+        width_scale=1,
+        out_features=256,
+        cnn_filters=(16, 32, 32),
+        activation="relu",
+        use_layer_init_normed=False,
+        p_augment=0.0,
+        micro_dropout_p=0.0,
     ):
         super().__init__()
 
         self.augment = TrainOnlyBlurNoise(p=p_augment)
         shape = envs.single_observation_space.shape  # (c, h, w)
-        scale = 1 / np.sqrt(len(cnn_filters))  # Not fully sure about the logic behind this but it's used in PPG code
+        scale = 1 / np.sqrt(
+            len(cnn_filters)
+        )  # Not fully sure about the logic behind this but it's used in PPG code
 
         cnn_layers = []
         for i_block, out_channels in enumerate(cnn_filters):
-            conv_seq = ConvSequence(shape, int(out_channels * width_scale), scale=scale,
-                                    use_layer_init_normed=use_layer_init_normed, activation=activation)
+            conv_seq = ConvSequence(
+                shape,
+                int(out_channels * width_scale),
+                scale=scale,
+                use_layer_init_normed=use_layer_init_normed,
+                activation=activation,
+            )
 
             shape = conv_seq.get_output_shape()
             cnn_layers.append(conv_seq)
@@ -125,10 +161,7 @@ class ImpalaCNN(nn.Module):
 
         encodertop = nn.Linear(in_features_encoder, out_features=out_features)
 
-        linear_layers += [
-            encodertop,
-            activation_factory(activation)
-        ]
+        linear_layers += [encodertop, activation_factory(activation)]
         self.network = nn.Sequential(*linear_layers)
 
     def forward(self, x):
@@ -144,6 +177,7 @@ class ImpalaCNN(nn.Module):
 #############################################################
 # Regularized Impala CNN with train-time-only dropout and noise
 #############################################################
+
 
 class TrainOnlyMicroDropout(nn.Module):
     def __init__(self, p=0.03):
@@ -161,7 +195,9 @@ class TrainOnlyBlurNoise(nn.Module):
         super().__init__()
         self.p = float(p)
         self.noise_std = float(noise_std)
-        self.blur = nn.AvgPool2d(kernel_size=3, stride=1, padding=1, count_include_pad=False)
+        self.blur = nn.AvgPool2d(
+            kernel_size=3, stride=1, padding=1, count_include_pad=False
+        )
 
     def forward(self, x):
         if not self.training or self.p <= 0.0 or torch.rand(()) >= self.p:
@@ -183,23 +219,27 @@ class EarlyActivationReLU(nn.Module):
 
 
 class ImpalaCnnReg(nn.Module):
-    def __init__(self,
-                 envs,
-                 width_scale=1,
-                 out_features=256,
-                 cnn_filters=(16, 32, 32),
-                 activation='relu',
-                 use_layer_init_normed=False,
-                 micro_dropout_p=0.03,
-                 p_augment=0.1):
+    def __init__(
+        self,
+        envs,
+        width_scale=1,
+        out_features=256,
+        cnn_filters=(16, 32, 32),
+        activation="relu",
+        use_layer_init_normed=False,
+        micro_dropout_p=0.03,
+        p_augment=0.1,
+    ):
         super().__init__()
-        self.base = ImpalaCNN(envs=envs,
-                              width_scale=width_scale,
-                              out_features=out_features,
-                              cnn_filters=cnn_filters,
-                              activation=activation,
-                              use_layer_init_normed=use_layer_init_normed,
-                              p_augment=p_augment)
+        self.base = ImpalaCNN(
+            envs=envs,
+            width_scale=width_scale,
+            out_features=out_features,
+            cnn_filters=cnn_filters,
+            activation=activation,
+            use_layer_init_normed=use_layer_init_normed,
+            p_augment=p_augment,
+        )
         self.after_pool_dropout = TrainOnlyMicroDropout(p=micro_dropout_p)
         self.after_linear_dropout = TrainOnlyMicroDropout(p=micro_dropout_p)
         self._wire()
@@ -231,29 +271,37 @@ class ImpalaCnnReg(nn.Module):
 
     def get_output_shape(self):
         return self.base.get_output_shape()
-    
+
+
 class RNDModel(nn.Module):
     """Simple RND module with a target (fixed) and predictor (trainable).
     Uses small conv encoder + adaptive pooling to support arbitrary image sizes.
     """
+
     def __init__(self, obs_shape, rnd_output_size=128):
         super().__init__()
         c, h, w = obs_shape
         self.predictor = nn.Sequential(
-            nn.Conv2d(c, 32, 8, stride=4, padding=0), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1,1)),
+            nn.Conv2d(c, 32, 8, stride=4, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
-            nn.Linear(64, rnd_output_size)
+            nn.Linear(64, rnd_output_size),
         )
         self.target = nn.Sequential(
-            nn.Conv2d(c, 32, 8, stride=4, padding=0), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1,1)),
+            nn.Conv2d(c, 32, 8, stride=4, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
-            nn.Linear(64, rnd_output_size)
+            nn.Linear(64, rnd_output_size),
         )
         # Freeze target parameters
         for p in self.target.parameters():

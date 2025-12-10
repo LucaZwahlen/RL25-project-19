@@ -1,4 +1,3 @@
-import random
 import time
 from copy import deepcopy
 
@@ -12,9 +11,11 @@ from impoola_cnn.impoola.utils.environment_knowledge import TEST_ENV_RANGE
 
 def get_action_and_value(args, agent, obs):
     """Generic action and value function for different agent types"""
-    deterministic = args.deterministic_rollout if hasattr(args, 'deterministic_rollout') else False
+    deterministic = (
+        args.deterministic_rollout if hasattr(args, "deterministic_rollout") else False
+    )
 
-    if hasattr(agent, 'get_action_and_value'):
+    if hasattr(agent, "get_action_and_value"):
         return agent.get_action_and_value(obs)
     else:
         action = agent.get_action(obs, deterministic=deterministic)
@@ -28,10 +29,27 @@ def evaluate_test_performance(agent, args, device, force_rdm_seed=False):
     test_args = deepcopy(args)
     test_args.num_envs = 64
     rdm_seed = int(time.time()) % 1000000 if force_rdm_seed else args.seed
-    test_envs = make_procgen_env(test_args, full_distribution=False, normalize_reward=False, rand_seed=rdm_seed, render=False,
-                                 distribution_mode=args.distribution_mode, num_levels_override=TEST_ENV_RANGE - 1000, start_level_override=1000)
+    test_envs = make_procgen_env(
+        test_args,
+        full_distribution=False,
+        normalize_reward=False,
+        rand_seed=rdm_seed,
+        render=False,
+        distribution_mode=args.distribution_mode,
+        num_levels_override=TEST_ENV_RANGE - 1000,
+        start_level_override=1000,
+    )
 
-    episodeQueueCalculator = EpisodeQueueCalculator('test', args.seed, False, 0, test_args.env_id, test_args.num_envs, test_args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator(
+        "test",
+        args.seed,
+        False,
+        0,
+        test_args.env_id,
+        test_args.num_envs,
+        test_args.distribution_mode,
+        device,
+    )
 
     num_episodes = 0
     target_episodes = 64
@@ -47,7 +65,9 @@ def evaluate_test_performance(agent, args, device, force_rdm_seed=False):
         obs, reward, terminated, truncated, info = test_envs.step(action.cpu().numpy())
         obs = torch.tensor(obs, device=device)
 
-        episodeQueueCalculator.update(action, torch.tensor(reward, device=device).view(-1))
+        episodeQueueCalculator.update(
+            action, torch.tensor(reward, device=device).view(-1)
+        )
 
         if "_episode" in info.keys():
             episodeQueueCalculator.extend(info)
@@ -56,7 +76,10 @@ def evaluate_test_performance(agent, args, device, force_rdm_seed=False):
 
     test_envs.close()
 
-    return episodeQueueCalculator.get_statistics(), episodeQueueCalculator.get_raw_counts()
+    return (
+        episodeQueueCalculator.get_statistics(),
+        episodeQueueCalculator.get_raw_counts(),
+    )
 
 
 def evaluate_test_performance_grpo(agent, args, device, force_rdm_seed=False):
@@ -79,14 +102,14 @@ def evaluate_test_performance_grpo(agent, args, device, force_rdm_seed=False):
     )
 
     episodeQueueCalculator = EpisodeQueueCalculator(
-        'test',
+        "test",
         args.seed,
         False,
         0,
         test_args.env_id,
         test_args.num_envs,
         test_args.distribution_mode,
-        device
+        device,
     )
 
     num_episodes = 0
@@ -111,7 +134,9 @@ def evaluate_test_performance_grpo(agent, args, device, force_rdm_seed=False):
         obs = torch.tensor(obs, device=device)
 
         # Log rewards into calculator
-        episodeQueueCalculator.update(action, torch.tensor(reward, device=device).view(-1))
+        episodeQueueCalculator.update(
+            action, torch.tensor(reward, device=device).view(-1)
+        )
 
         if "_episode" in info.keys():
             episodeQueueCalculator.extend(info)

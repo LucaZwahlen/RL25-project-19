@@ -2,15 +2,16 @@ import csv
 import json
 import math
 import os
-import time
 from collections import deque
 
 import numpy as np
 import torch
 
 from impoola_cnn.impoola.utils.environment_knowledge import (
-    try_get_optimal_all_knowing_path_length, try_get_optimal_test_path_length,
-    try_get_optimal_train_path_length)
+    try_get_optimal_all_knowing_path_length,
+    try_get_optimal_test_path_length,
+    try_get_optimal_train_path_length,
+)
 from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
 from impoola_cnn.impoola.utils.success_rewards import get_success_reward
 
@@ -18,14 +19,28 @@ EPSILON = 0.25
 
 
 class EpisodeQueueCalculator:
-    def __init__(self, type, seed, normalize_reward, queue_len, env_id, num_envs, distribution_mode, device):
+    def __init__(
+        self,
+        type,
+        seed,
+        normalize_reward,
+        queue_len,
+        env_id,
+        num_envs,
+        distribution_mode,
+        device,
+    ):
         self.normalize_reward = normalize_reward
-        if type == 'train':
-            self.optimal_path_length = try_get_optimal_train_path_length(env_id, seed, distribution_mode)
-        elif type == 'test':
+        if type == "train":
+            self.optimal_path_length = try_get_optimal_train_path_length(
+                env_id, seed, distribution_mode
+            )
+        elif type == "test":
             self.optimal_path_length = try_get_optimal_test_path_length(env_id, seed)
-        elif type == 'all-knowing':
-            self.optimal_path_length = try_get_optimal_all_knowing_path_length(env_id, distribution_mode)
+        elif type == "all-knowing":
+            self.optimal_path_length = try_get_optimal_all_knowing_path_length(
+                env_id, distribution_mode
+            )
 
         self.num_envs = num_envs
         self.ticks = torch.zeros((num_envs,), device=device)
@@ -56,7 +71,9 @@ class EpisodeQueueCalculator:
 
     def update(self, action, rewards):
         # here we assume that when normalizing, the completed reward is large enough that it will go to the clamp max (10.0)
-        success_reward_fixed = torch.tensor(10.0) if self.normalize_reward else self.success_reward
+        success_reward_fixed = (
+            torch.tensor(10.0) if self.normalize_reward else self.success_reward
+        )
         self.ticks += 1
         action_op_mask = ~(self.noop_mask[action])
         self.steps += action_op_mask
@@ -64,26 +81,34 @@ class EpisodeQueueCalculator:
 
     def extend_sit(self, info):
         dict_info = {}
-        for key in ['episode', 'level_seed', 'prev_level_complete', 'prev_level_seed']:
+        for key in ["episode", "level_seed", "prev_level_complete", "prev_level_seed"]:
             dict_info[key] = [inf[key] for inf in info if key in inf]
-        dict_info['episode'] = {}
-        dict_info['episode']['r'] = np.array([inf['episode']['r'] if 'episode' in inf else 0.0 for inf in info])
-        dict_info['episode']['l'] = np.array([inf['episode']['l'] if 'episode' in inf else 0.0 for inf in info])
-        dict_info['episode']['t'] = np.array([inf['episode']['t'] if 'episode' in inf else 0.0 for inf in info])
+        dict_info["episode"] = {}
+        dict_info["episode"]["r"] = np.array(
+            [inf["episode"]["r"] if "episode" in inf else 0.0 for inf in info]
+        )
+        dict_info["episode"]["l"] = np.array(
+            [inf["episode"]["l"] if "episode" in inf else 0.0 for inf in info]
+        )
+        dict_info["episode"]["t"] = np.array(
+            [inf["episode"]["t"] if "episode" in inf else 0.0 for inf in info]
+        )
 
         # indices of completed episodes
-        indices = [i for i, inf in enumerate(info) if 'episode' in inf]
+        indices = [i for i, inf in enumerate(info) if "episode" in inf]
         _episode = np.zeros(self.num_envs, dtype=bool)
         _episode[indices] = True
 
         if _episode.any():
-            dict_info['_episode'] = _episode
+            dict_info["_episode"] = _episode
             self.extend(dict_info)
 
     def extend(self, info):
         completed_episodes = info["episode"]["r"][info["_episode"]]
         self.rewards.extend(completed_episodes)
-        completed_levels_prev_seeds = np.array(info['prev_level_seed'])[info["_episode"]]
+        completed_levels_prev_seeds = np.array(info["prev_level_seed"])[
+            info["_episode"]
+        ]
         self.level_seeds.extend(completed_levels_prev_seeds)
         completed_ticks = self.ticks[info["_episode"]].cpu().numpy()
         self.num_ticks.extend(completed_ticks)
@@ -97,7 +122,9 @@ class EpisodeQueueCalculator:
 
         # spl
         L_star = self.optimal_path_length[completed_levels_prev_seeds]
-        t_i = completed_episode_succeeded * (L_star / np.maximum(completed_steps, L_star))
+        t_i = completed_episode_succeeded * (
+            L_star / np.maximum(completed_steps, L_star)
+        )
         self.spl_terms.extend(t_i)
 
     def get_statistics(self):
@@ -110,17 +137,35 @@ class EpisodeQueueCalculator:
         levels = list(self.level_seeds)
         count = len(self.rewards)
 
-        return mean_reward, median_reward, mean_ticks, mean_steps, mean_success, mean_spl, levels, count
+        return (
+            mean_reward,
+            median_reward,
+            mean_ticks,
+            mean_steps,
+            mean_success,
+            mean_spl,
+            levels,
+            count,
+        )
 
     def get_raw_counts(self):
-        return self.rewards, self.num_ticks, self.num_steps, self.is_success, self.spl_terms, list(self.level_seeds)
+        return (
+            self.rewards,
+            self.num_ticks,
+            self.num_steps,
+            self.is_success,
+            self.spl_terms,
+            list(self.level_seeds),
+        )
 
 
 class Logger:
     def __init__(self, args):
         self.output_file_csv = os.path.join(args.output_dir, "sit_format.csv")
         self.output_file_levels = os.path.join(args.output_dir, "levels.jsonl")
-        self.output_file_extensive = os.path.join(args.output_dir, "extensive_logs.jsonl")
+        self.output_file_extensive = os.path.join(
+            args.output_dir, "extensive_logs.jsonl"
+        )
         self.output_file_config = os.path.join(args.output_dir, "config.json")
 
         # Initialize files and directories
@@ -128,12 +173,12 @@ class Logger:
         self._save_config_file(args)
 
         # Open CSV file and keep handle open
-        self.csv_file = open(self.output_file_csv, 'w', newline='')
+        self.csv_file = open(self.output_file_csv, "w", newline="")
         self.csv_writer = csv.writer(self.csv_file)
 
         # Open levels file and keep handle open
-        self.levels_file = open(self.output_file_levels, 'w')
-        self.extensive_file = open(self.output_file_extensive, 'w')
+        self.levels_file = open(self.output_file_levels, "w")
+        self.extensive_file = open(self.output_file_extensive, "w")
 
         # Write CSV header
         self.csv_writer.writerow(
@@ -157,7 +202,7 @@ class Logger:
                 "train/spl",
                 "nupdates",
                 "total_steps",
-                "training_time"
+                "training_time",
             ]
         )
         self.csv_file.flush()
@@ -169,30 +214,57 @@ class Logger:
         self.close()
 
     def _fmt_num(self, x):
-        if isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(float(x)):
+        if (
+            isinstance(x, (int, float))
+            and not isinstance(x, bool)
+            and math.isfinite(float(x))
+        ):
             return f"{float(x):.4f}"
         return x
 
     def _save_config_file(self, args):
-        with open(self.output_file_config, 'w') as f:
+        with open(self.output_file_config, "w") as f:
             json.dump(vars(args), f, indent=2)
 
     def _log_level_data(self, level_data):
         json.dump(level_data, self.levels_file)
-        self.levels_file.write('\n')
+        self.levels_file.write("\n")
         self.levels_file.flush()
 
     def _log_extensive_data(self, extensive_data):
         json.dump(extensive_data, self.extensive_file)
-        self.extensive_file.write('\n')
+        self.extensive_file.write("\n")
         self.extensive_file.flush()
 
     def _log_csv_data(self, row):
         self.csv_writer.writerow(row)
         self.csv_file.flush()
 
-    def log(self, action_loss, dist_entropy, value_loss, test_mean, test_median, test_levels, test_count, test_ticks, test_steps, test_success, test_spl,
-            train_mean, train_median, train_levels, train_count, train_ticks, train_steps, train_success, train_spl, nupdates, total_steps, training_time):
+    def log(
+        self,
+        action_loss,
+        dist_entropy,
+        value_loss,
+        test_mean,
+        test_median,
+        test_levels,
+        test_count,
+        test_ticks,
+        test_steps,
+        test_success,
+        test_spl,
+        train_mean,
+        train_median,
+        train_levels,
+        train_count,
+        train_ticks,
+        train_steps,
+        train_success,
+        train_spl,
+        nupdates,
+        total_steps,
+        training_time,
+    ):
         row = [
             self._fmt_num(action_loss),
             self._fmt_num(dist_entropy),
@@ -226,8 +298,25 @@ class Logger:
         self._log_csv_data(row)
         self._log_level_data(levels)
 
-    def log_extensive(self, action_loss, dist_entropy, value_loss, test_rewards, test_ticks, test_steps, test_success, test_spl,
-                      train_rewards, train_ticks, train_steps, train_success, train_spl, nupdates, total_steps, training_time):
+    def log_extensive(
+        self,
+        action_loss,
+        dist_entropy,
+        value_loss,
+        test_rewards,
+        test_ticks,
+        test_steps,
+        test_success,
+        test_spl,
+        train_rewards,
+        train_ticks,
+        train_steps,
+        train_success,
+        train_spl,
+        nupdates,
+        total_steps,
+        training_time,
+    ):
         # Log per-episode data in extensive logging mode
         extensive = {
             "action_loss": float(action_loss),

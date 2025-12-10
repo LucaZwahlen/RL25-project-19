@@ -11,9 +11,11 @@ import torch
 import torch.optim as optim
 import tyro
 
-from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
-                                                             progcen_hard_hns,
-                                                             progcen_hns)
+from impoola_cnn.impoola.eval.normalized_score_lists import (
+    progcen_easy_hns,
+    progcen_hard_hns,
+    progcen_hns,
+)
 from impoola_cnn.impoola.maker.make_env import make_an_env, make_procgen_env
 from impoola_cnn.impoola.train.agents import PPOAgent
 from impoola_cnn.impoola.train.train_ppo_agent import train_ppo_agent
@@ -67,7 +69,7 @@ class Args:
     weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
-    activation: str = 'relu'
+    activation: str = "relu"
     rescale_lr_by_scale: bool = True
 
     # ReDo settings
@@ -121,33 +123,49 @@ if __name__ == "__main__":
     print(f"Device         : {device}")
     print(line)
 
-    if device.type == 'cuda':
+    if device.type == "cuda":
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
 
     if args.is_all_knowing:
-        envs = make_procgen_env(args, full_distribution=False, normalize_reward=args.normalize_reward, rand_seed=args.seed, render=False,
-                                distribution_mode=args.distribution_mode, num_levels_override=TEST_ENV_RANGE, start_level_override=0)
+        envs = make_procgen_env(
+            args,
+            full_distribution=False,
+            normalize_reward=args.normalize_reward,
+            rand_seed=args.seed,
+            render=False,
+            distribution_mode=args.distribution_mode,
+            num_levels_override=TEST_ENV_RANGE,
+            start_level_override=0,
+        )
     else:
-        envs = make_an_env(args, seed=args.seed,
-                           normalize_reward=args.normalize_reward,
-                           full_distribution=False)
+        envs = make_an_env(
+            args,
+            seed=args.seed,
+            normalize_reward=args.normalize_reward,
+            full_distribution=False,
+        )
 
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    assert isinstance(
+        envs.single_action_space, gym.spaces.Discrete
+    ), "only discrete action space is supported"
 
     agent = PPOAgent(
         encoder_type=args.encoder_type,
         envs=envs,
-        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
+        width_scale=args.scale,
+        out_features=args.latent_space_dim,
+        cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
         p_augment=args.p_augment,
-        micro_dropout_p=args.micro_dropout_p
+        micro_dropout_p=args.micro_dropout_p,
     ).to(device)
 
     with torch.no_grad():
-        example_input = 127 * np.ones((1,) + envs.single_observation_space.shape).astype(
-            envs.single_observation_space.dtype)
+        example_input = 127 * np.ones(
+            (1,) + envs.single_observation_space.shape
+        ).astype(envs.single_observation_space.dtype)
         example_input = torch.tensor(example_input).to(device)
         agent.get_action_and_value(example_input)
 
@@ -158,21 +176,34 @@ if __name__ == "__main__":
         lr=torch.tensor(args.learning_rate, device=device),
         eps=1e-5,  # default eps=1e-8
         weight_decay=args.weight_decay,
-        fused=True
+        fused=True,
     )
 
     if args.rescale_lr_by_scale:
         # LR was set for the default scale of 2, so we need to rescale it
         lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
-        optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
+        optimizer.param_groups[0]["lr"].copy_(
+            optimizer.param_groups[0]["lr"] / lr_scaling_factor
+        )
 
-    envs, agent, global_step, b_obs = train_ppo_agent(args, logger, envs, agent, optimizer, device)
+    envs, agent, global_step, b_obs = train_ppo_agent(
+        args, logger, envs, agent, optimizer, device
+    )
     envs.close()
     logger.close()
 
     agent = agent.to(device)
 
     print("Running final detailed evaluation!")
-    save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, "final_checkpoint")
+    save_checkpoint(
+        agent,
+        optimizer,
+        args,
+        global_step,
+        envs,
+        args.output_dir,
+        args.run_name,
+        "final_checkpoint",
+    )
 
     print(f"All training and evaluation complete! Files saved to: {args.output_dir}")

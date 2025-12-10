@@ -63,7 +63,9 @@ class Args:
     target_kl: Optional[float] = None
 
     # GRPO-specific parameters
-    kl_coef: float = 0.01  # KL divergence penalty coefficient between current and reference policy
+    kl_coef: float = (
+        0.01  # KL divergence penalty coefficient between current and reference policy
+    )
     ref_policy_update_freq: int = 10  # Update reference policy every N iterations
 
     # Network specific arguments
@@ -179,7 +181,9 @@ if __name__ == "__main__":
 
     if args.rescale_lr_by_scale:
         # LR was set for the default scale of 2, so we need to rescale it
-        optimizer.param_groups[0]['lr'] = optimizer.param_groups[0]['lr'] / (args.scale / 2)
+        optimizer.param_groups[0]["lr"] = optimizer.param_groups[0]["lr"] / (
+            args.scale / 2
+        )
 
     print("\n" + "=" * 72)
     print("Starting GRPO training...")
@@ -188,7 +192,7 @@ if __name__ == "__main__":
     envs, agent, global_step, b_obs = train_grpo_agent(
         args, logger, envs, agent, optimizer, device
     )
-    
+
     envs.close()
     logger.close()
 
@@ -197,7 +201,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 72)
     print("Running final detailed evaluation!")
     print("=" * 72 + "\n")
-    
+
     save_checkpoint(
         agent,
         optimizer,
@@ -210,6 +214,6 @@ if __name__ == "__main__":
     )
 
     print("\n" + "=" * 72)
-    print(f"✓ All training and evaluation complete!")
+    print("✓ All training and evaluation complete!")
     print(f"✓ Files saved to: {args.output_dir}")
     print("=" * 72 + "\n")

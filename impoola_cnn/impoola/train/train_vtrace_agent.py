@@ -6,11 +6,14 @@ import torch.nn as nn
 from tqdm import trange
 
 from impoola_cnn.impoola.train.vtrace_criterion import compute_vtrace_targets
-from impoola_cnn.impoola.utils.DRAC import (DRACTransformChaserFruitbot, remap_logprobs_for_flip, HFLIP_MAP)
-from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
-                                                   Logger)
-from impoola_cnn.impoola.utils.evaluate_test_performance import \
-    evaluate_test_performance
+from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator, Logger
+from impoola_cnn.impoola.utils.DRAC import (
+    DRACTransformChaserFruitbot,
+    remap_logprobs_for_flip,
+)
+from impoola_cnn.impoola.utils.evaluate_test_performance import (
+    evaluate_test_performance,
+)
 
 
 def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
@@ -25,7 +28,9 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         rewards = torch.zeros((T, N), device=device, dtype=torch.float32)
         dones = torch.zeros((T, N), device=device, dtype=torch.bool)
         values = torch.zeros((T, N), device=device, dtype=torch.float32)
-        behavior_logits = torch.zeros((T, N, envs.single_action_space.n), device=device, dtype=torch.float32)
+        behavior_logits = torch.zeros(
+            (T, N, envs.single_action_space.n), device=device, dtype=torch.float32
+        )
 
         gamma = torch.tensor(args.gamma, device=device)
         ent_coef = torch.tensor(args.ent_coef, device=device)
@@ -33,8 +38,16 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         rho_bar = torch.tensor(args.vtrace_rho_bar, device=device)
         c_bar = torch.tensor(args.vtrace_c_bar, device=device)
 
-        episodeQueueCalculator = EpisodeQueueCalculator('train', args.seed, args.normalize_reward, 100, args.env_id, N,
-                                                        args.distribution_mode, device)
+        episodeQueueCalculator = EpisodeQueueCalculator(
+            "train",
+            args.seed,
+            args.normalize_reward,
+            100,
+            args.env_id,
+            N,
+            args.distribution_mode,
+            device,
+        )
 
         global_step = 0
 
@@ -42,7 +55,9 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
         iteration_start_time = time.time()
 
         next_obs_np, _ = envs.reset()
-        next_obs = torch.from_numpy(next_obs_np).to(device, non_blocking=True).to(torch.uint8)
+        next_obs = (
+            torch.from_numpy(next_obs_np).to(device, non_blocking=True).to(torch.uint8)
+        )
 
         for iteration in trange(1, args.num_iterations + 1):
 
@@ -51,18 +66,31 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 obs[step] = next_obs
 
                 with torch.no_grad():
-                    action, _, _, value, pi_logits = agent.get_action_and_value(next_obs)
+                    action, _, _, value, pi_logits = agent.get_action_and_value(
+                        next_obs
+                    )
                     actions[step] = action
                     values[step] = value.flatten()
                     behavior_logits[step] = pi_logits
 
                 np_actions = actions[step].detach().cpu().numpy()
-                next_obs_np, reward_np, terminated_np, truncated_np, info = envs.step(np_actions)
+                next_obs_np, reward_np, terminated_np, truncated_np, info = envs.step(
+                    np_actions
+                )
 
-                rewards[step] = torch.as_tensor(reward_np, device=device, dtype=torch.float32)
-                dones[step] = torch.as_tensor(np.logical_or(terminated_np, truncated_np), device=device,
-                                              dtype=torch.bool)
-                next_obs = torch.from_numpy(next_obs_np).to(device, non_blocking=True).to(torch.uint8)
+                rewards[step] = torch.as_tensor(
+                    reward_np, device=device, dtype=torch.float32
+                )
+                dones[step] = torch.as_tensor(
+                    np.logical_or(terminated_np, truncated_np),
+                    device=device,
+                    dtype=torch.bool,
+                )
+                next_obs = (
+                    torch.from_numpy(next_obs_np)
+                    .to(device, non_blocking=True)
+                    .to(torch.uint8)
+                )
 
                 episodeQueueCalculator.update(actions[step], rewards[step])
 
@@ -91,7 +119,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                 gamma=gamma,
                 rho_bar=rho_bar,
                 c_bar=c_bar,
-                actions=flat_actions
+                actions=flat_actions,
             )
             # pg_adv = (pg_adv - pg_adv.mean()) / (pg_adv.std() + 1e-8)
 
@@ -123,12 +151,22 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
 
                 with torch.no_grad():
                     a_clean = dist_clean.sample()
-                    ent_scale = (dist_clean.entropy() / np.log(envs.single_action_space.n)).clamp(0.0, 1.0).mean()
+                    ent_scale = (
+                        (dist_clean.entropy() / np.log(envs.single_action_space.n))
+                        .clamp(0.0, 1.0)
+                        .mean()
+                    )
 
-                drac_policy_loss = -remap_logprobs_for_flip(dist_flip, a_clean).mean() * ent_scale
+                drac_policy_loss = (
+                    -remap_logprobs_for_flip(dist_flip, a_clean).mean() * ent_scale
+                )
 
                 ratio = 0.3
-                scale = ratio * policy_loss.detach().abs() / (drac_policy_loss.detach().abs() + 1e-8)
+                scale = (
+                    ratio
+                    * policy_loss.detach().abs()
+                    / (drac_policy_loss.detach().abs() + 1e-8)
+                )
                 scaled_policy_loss = scale * drac_policy_loss
 
                 # print("", flush=True)
@@ -146,22 +184,55 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
             nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
             optimizer.step()
 
-            eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
-            do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)
+            eval_interval = (
+                max(1, args.num_iterations // args.n_datapoints_csv)
+                if args.n_datapoints_csv
+                else 1
+            )
+            do_eval = (
+                args.num_iterations == 0
+                or (iteration % eval_interval == 0)
+                or (iteration == args.num_iterations)
+            )
             if do_eval:
                 avg_policy_loss = policy_loss.item()
                 avg_value_loss = value_loss.item()
                 avg_entropy_loss = entropy_loss.item()
 
                 iteration_end_time = time.time()
-                cumulative_training_time += (iteration_end_time - iteration_start_time)
+                cumulative_training_time += iteration_end_time - iteration_start_time
 
                 simple, detailed = evaluate_test_performance(agent, args, device)
 
-                test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = simple
-                test_rewards, test_num_ticks, test_num_steps, test_is_success, test_spl_terms, _ = detailed
+                (
+                    test_mean_reward,
+                    test_median_reward,
+                    test_ticks,
+                    test_steps,
+                    test_success,
+                    test_spl,
+                    test_levels,
+                    test_count,
+                ) = simple
+                (
+                    test_rewards,
+                    test_num_ticks,
+                    test_num_steps,
+                    test_is_success,
+                    test_spl_terms,
+                    _,
+                ) = detailed
 
-                train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
+                (
+                    train_mean_reward,
+                    train_median_reward,
+                    train_ticks,
+                    train_steps,
+                    train_success,
+                    train_spl,
+                    train_levels,
+                    train_count,
+                ) = episodeQueueCalculator.get_statistics()
 
                 logger.log(
                     avg_policy_loss,
@@ -185,11 +256,18 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                     train_spl,
                     iteration,
                     global_step,
-                    cumulative_training_time
+                    cumulative_training_time,
                 )
 
                 if args.extensive_logging:
-                    train_rewards, train_num_ticks, train_num_steps, train_is_success, train_spl_terms, _ = episodeQueueCalculator.get_raw_counts()
+                    (
+                        train_rewards,
+                        train_num_ticks,
+                        train_num_steps,
+                        train_is_success,
+                        train_spl_terms,
+                        _,
+                    ) = episodeQueueCalculator.get_raw_counts()
 
                     logger.log_extensive(
                         avg_policy_loss,
@@ -207,7 +285,7 @@ def train_vtrace_agent(args, logger: Logger, envs, agent, optimizer, device):
                         train_spl_terms,
                         iteration,
                         global_step,
-                        cumulative_training_time
+                        cumulative_training_time,
                     )
 
                 iteration_start_time = time.time()

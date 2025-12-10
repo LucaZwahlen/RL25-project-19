@@ -1,8 +1,18 @@
 import torch
 
 
-def compute_vtrace_targets(rewards, dones, values, bootstrap_value, behavior_logits, target_logits,
-                           gamma, rho_bar, c_bar, actions):
+def compute_vtrace_targets(
+    rewards,
+    dones,
+    values,
+    bootstrap_value,
+    behavior_logits,
+    target_logits,
+    gamma,
+    rho_bar,
+    c_bar,
+    actions,
+):
     t, n = rewards.shape
     k = behavior_logits.shape[-1]
     with torch.no_grad():

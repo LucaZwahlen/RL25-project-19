@@ -1,7 +1,5 @@
-import os
 import random
 import time
-from collections import deque
 
 import numpy as np
 import torch
@@ -9,14 +7,16 @@ import torch.nn.functional as F
 from tqdm import trange
 
 from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator
-from impoola_cnn.impoola.utils.evaluate_test_performance import \
-    evaluate_test_performance
-from impoola_cnn.impoola.utils.utils import StopTimer, linear_schedule
+from impoola_cnn.impoola.utils.evaluate_test_performance import (
+    evaluate_test_performance,
+)
+from impoola_cnn.impoola.utils.utils import linear_schedule
 
 
 def make_replay_buffer(args, envs, device):
-    from impoola_cnn.impoola.utils.replay_buffer import \
-        SimplifiedPrioritizedMultiStepReplayBuffer as Buffer
+    from impoola_cnn.impoola.utils.replay_buffer import (
+        SimplifiedPrioritizedMultiStepReplayBuffer as Buffer,
+    )
 
     replay_buffer = Buffer(
         args.buffer_size,
@@ -30,7 +30,7 @@ def make_replay_buffer(args, envs, device):
         gamma=args.gamma,
         alpha=0.5,
         beta=0.5,
-        beta_increment_per_sampling=0  # (1 - 0.4) / (args.total_timesteps // args.num_envs),
+        beta_increment_per_sampling=0,  # (1 - 0.4) / (args.total_timesteps // args.num_envs),
     )
     return replay_buffer
 
@@ -39,8 +39,16 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
     q_network, target_network = agent
 
     # Track training episode statistics
-    episodeQueueCalculator = EpisodeQueueCalculator('train', args.seed, args.normalize_reward,
-                                                    100, args.env_id, args.num_envs, args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator(
+        "train",
+        args.seed,
+        args.normalize_reward,
+        100,
+        args.env_id,
+        args.num_envs,
+        args.distribution_mode,
+        device,
+    )
 
     update_count = 0
 
@@ -52,18 +60,24 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
         with torch.no_grad():
             data, replay_indices, replay_weights = unwrap_data(data)
 
-            online_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
+            online_actions = q_network(data.next_observations).argmax(
+                dim=1, keepdim=True
+            )
             target_max = target_network(data.next_observations)
             target_max = torch.gather(target_max, 1, online_actions).squeeze()
-            td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
+            td_target = data.rewards.flatten() + args.gamma * target_max * (
+                1 - data.dones.flatten()
+            )
 
         old_val = q_network(data.observations)
         old_val = torch.gather(old_val, 1, data.actions).squeeze()
-        assert td_target.shape == old_val.shape, f"Shapes of td_target and old_val do not match: {td_target.shape} vs {old_val.shape}"
+        assert (
+            td_target.shape == old_val.shape
+        ), f"Shapes of td_target and old_val do not match: {td_target.shape} vs {old_val.shape}"
 
         td_error = td_target - old_val
         td_error = td_error * replay_weights
-        loss = torch.mean(td_error ** 2)
+        loss = torch.mean(td_error**2)
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -85,7 +99,9 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
     iteration_start_time = time.time()
 
     while global_step < args.total_timesteps:
-        epsilon = linear_schedule(args.start_e, args.end_e, duration_linear_schedule, global_step)
+        epsilon = linear_schedule(
+            args.start_e, args.end_e, duration_linear_schedule, global_step
+        )
 
         if args.anneal_lr:
             frac = 1.0 - (global_step - 1.0) / args.total_timesteps
@@ -97,10 +113,17 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
                 q_values = q_network(torch.tensor(obs, device=device))
                 temperature = 1.0
                 action_probs = F.softmax(q_values / temperature, dim=1)
-                actions = torch.multinomial(action_probs, num_samples=1).squeeze().cpu().numpy()
+                actions = (
+                    torch.multinomial(action_probs, num_samples=1)
+                    .squeeze()
+                    .cpu()
+                    .numpy()
+                )
         else:
             if random.random() < epsilon:
-                actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
+                actions = np.array(
+                    [envs.single_action_space.sample() for _ in range(envs.num_envs)]
+                )
             else:
                 with torch.no_grad():  # with torch.inference_mode():  <- issues with torch.compile
                     q_values = q_network(torch.tensor(obs, device=device))
@@ -111,7 +134,9 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
         global_step += envs.num_envs
         bar.n = global_step
         bar.refresh()
-        episodeQueueCalculator.update(actions, torch.tensor(rewards, device=device).view(-1))
+        episodeQueueCalculator.update(
+            actions, torch.tensor(rewards, device=device).view(-1)
+        )
 
         if "_episode" in info.keys():
             episodeQueueCalculator.extend(info)
@@ -121,37 +146,82 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
             if global_step % args.train_frequency == 0:
 
                 # if train_frequency is smaller than one, we want to update more than once per step
-                num_updates = int(1 / args.train_frequency) if args.train_frequency < 1 else int(args.train_frequency)
+                num_updates = (
+                    int(1 / args.train_frequency)
+                    if args.train_frequency < 1
+                    else int(args.train_frequency)
+                )
 
                 for _ in range(num_updates):
                     data = replay_buffer.sample(args.batch_size)
-                    loss, old_val, td_error, replay_weights, replay_indices = \
+                    loss, old_val, td_error, replay_weights, replay_indices = (
                         update_dqn(data, args, q_network, target_network, optimizer)
+                    )
 
                     if args.prioritized_replay:
-                        replay_buffer.update_priorities(replay_indices, td_error.detach().abs().cpu().numpy())
-                        assert replay_weights.shape == td_error.shape, f"Replay_weights and td_error do not match"
+                        replay_buffer.update_priorities(
+                            replay_indices, td_error.detach().abs().cpu().numpy()
+                        )
+                        assert (
+                            replay_weights.shape == td_error.shape
+                        ), "Replay_weights and td_error do not match"
 
                     update_count += 1
 
-                eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
-                do_eval = args.num_iterations == 0 or (update_count % eval_interval == 0) or (
-                    update_count == args.num_iterations)
+                eval_interval = (
+                    max(1, args.num_iterations // args.n_datapoints_csv)
+                    if args.n_datapoints_csv
+                    else 1
+                )
+                do_eval = (
+                    args.num_iterations == 0
+                    or (update_count % eval_interval == 0)
+                    or (update_count == args.num_iterations)
+                )
                 if do_eval:
                     avg_policy_loss = loss.item()
                     avg_value_loss = 0.0
                     avg_entropy_loss = old_val.mean().item()
 
                     iteration_end_time = time.time()
-                    cumulative_training_time += (iteration_end_time - iteration_start_time)
+                    cumulative_training_time += (
+                        iteration_end_time - iteration_start_time
+                    )
 
                     # force rdm here, since for some fucking reason dqn does not randomize the np randomizer.
-                    simple, detailed = evaluate_test_performance(q_network, args, device, True)
+                    simple, detailed = evaluate_test_performance(
+                        q_network, args, device, True
+                    )
 
-                    test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = simple
-                    test_rewards, test_num_ticks, test_num_steps, test_is_success, test_spl_terms, _ = detailed
+                    (
+                        test_mean_reward,
+                        test_median_reward,
+                        test_ticks,
+                        test_steps,
+                        test_success,
+                        test_spl,
+                        test_levels,
+                        test_count,
+                    ) = simple
+                    (
+                        test_rewards,
+                        test_num_ticks,
+                        test_num_steps,
+                        test_is_success,
+                        test_spl_terms,
+                        _,
+                    ) = detailed
 
-                    train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
+                    (
+                        train_mean_reward,
+                        train_median_reward,
+                        train_ticks,
+                        train_steps,
+                        train_success,
+                        train_spl,
+                        train_levels,
+                        train_count,
+                    ) = episodeQueueCalculator.get_statistics()
 
                     logger.log(
                         avg_policy_loss,
@@ -175,11 +245,18 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
                         train_spl,
                         global_step,
                         global_step,
-                        cumulative_training_time
+                        cumulative_training_time,
                     )
 
                     if args.extensive_logging:
-                        train_rewards, train_num_ticks, train_num_steps, train_is_success, train_spl_terms, _ = episodeQueueCalculator.get_raw_counts()
+                        (
+                            train_rewards,
+                            train_num_ticks,
+                            train_num_steps,
+                            train_is_success,
+                            train_spl_terms,
+                            _,
+                        ) = episodeQueueCalculator.get_raw_counts()
 
                         logger.log_extensive(
                             avg_policy_loss,
@@ -197,7 +274,7 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
                             train_spl_terms,
                             global_step,
                             global_step,
-                            cumulative_training_time
+                            cumulative_training_time,
                         )
 
                     iteration_start_time = time.time()
@@ -210,8 +287,10 @@ def train_dqn_agent(args, logger, envs, agent, optimizer, device):
                 else:
                     target_state_dict = target_network.state_dict()
                     for key, value in target_state_dict.items():
-                        target_state_dict[key] = \
-                            args.tau * q_network_state_dict[key] + (1.0 - args.tau) * target_state_dict[key]
+                        target_state_dict[key] = (
+                            args.tau * q_network_state_dict[key]
+                            + (1.0 - args.tau) * target_state_dict[key]
+                        )
                     target_network.load_state_dict(target_state_dict)
 
         replay_buffer.add(obs, next_obs, actions, rewards, terminated, info)

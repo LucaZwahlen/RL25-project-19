@@ -1,36 +1,37 @@
-import os
-import time
 import copy
+import os
 import random
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional, Tuple
+
+import gym
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import tyro
-import gym
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Optional, Tuple
-from tqdm import trange
-from copy import deepcopy
-from torch.distributions import Categorical
 
 # --- IMPOOLA & PROCGEN IMPORTS ---
 from procgen import ProcgenEnv
-from impoola_cnn.impoola.train.nn import encoder_factory, layer_init_orthogonal
-from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator, Logger
-from impoola_cnn.impoola.utils.environment_knowledge import TEST_ENV_RANGE
-from impoola_cnn.impoola.utils.save_load import save_checkpoint
-from impoola_cnn.impoola.utils.utils import get_device
+from torch.distributions import Categorical
+from tqdm import trange
+
 from impoola_cnn.impoola.eval.normalized_score_lists import (
     progcen_easy_hns,
     progcen_hard_hns,
     progcen_hns,
 )
+from impoola_cnn.impoola.train.nn import encoder_factory, layer_init_orthogonal
+from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator, Logger
+from impoola_cnn.impoola.utils.save_load import save_checkpoint
+from impoola_cnn.impoola.utils.utils import get_device
 
 # =============================================================================
 # 1. CONFIGURATION (ARGS)
 # =============================================================================
+
 
 @dataclass
 class Args:
@@ -41,25 +42,25 @@ class Args:
     seed: int = 1
     torch_deterministic: bool = True
     output_dir: str = "outputs"
-    
+
     # --- Training Hyperparameters ---
     total_timesteps: int = int(10e6)
     learning_rate: float = 5e-5  # LOWERED for stability
-    num_envs: int = 64         # High count for Chaser
+    num_envs: int = 64  # High count for Chaser
     num_steps: int = 64
     anneal_lr: bool = False
     gamma: float = 0.999
-    
+
     # --- GRPO/PPO Specifics ---
-    group_size: int = 8       
-    update_epochs: int = 2    
+    group_size: int = 8
+    update_epochs: int = 2
     num_minibatches: int = 8
-    kl_coef: float = 0.05      # Penalty for drifting from Ref
-    ent_coef: float = 0.05     # Bonus for exploration
-    clip_coef: float = 0.2     # SAFETY BELT: Prevents explosion
+    kl_coef: float = 0.05  # Penalty for drifting from Ref
+    ent_coef: float = 0.05  # Bonus for exploration
+    clip_coef: float = 0.2  # SAFETY BELT: Prevents explosion
     max_grad_norm: float = 0.5
-    ref_policy_update_freq: int = 50 
-    
+    ref_policy_update_freq: int = 50
+
     # --- Network Architecture ---
     encoder_type: str = "impala"
     scale: int = 2
@@ -69,14 +70,14 @@ class Args:
     rescale_lr_by_scale: bool = True
     p_augment: float = 0.0
     micro_dropout_p: float = 0.0
-    
+
     # --- Logging & Eval ---
     extensive_logging: bool = True
     is_all_knowing: bool = False
     n_datapoints_csv: int = 500
     normalize_reward: bool = True
     deterministic_rollout: bool = False
-    
+
     # --- Unused/Legacy ---
     move_penalty: float = 0.05
     pruning_type: str = "Baseline"
@@ -88,9 +89,11 @@ class Args:
     vf_coef: float = 0.5
     target_kl: Optional[float] = None
 
+
 # =============================================================================
 # 2. CUSTOM ENVIRONMENT WRAPPERS (ROBUST FIX)
 # =============================================================================
+
 
 class VecPyTorch(gym.Wrapper):
     def __init__(self, venv, device):
@@ -107,31 +110,34 @@ class VecPyTorch(gym.Wrapper):
             obs, info = ret
         else:
             obs = ret
-            
-        if isinstance(obs, dict) and 'rgb' in obs:
-            obs = obs['rgb']
+
+        if isinstance(obs, dict) and "rgb" in obs:
+            obs = obs["rgb"]
 
         obs = np.transpose(obs, (0, 3, 1, 2))
         return torch.from_numpy(obs).float().to(self.device) / 255.0
 
     def step(self, action):
         ret = self.env.step(action)
-        if len(ret) == 5: 
+        if len(ret) == 5:
             obs, reward, terminated, truncated, info = ret
             done = np.logical_or(terminated, truncated)
-        else: 
+        else:
             obs, reward, done, info = ret
-            
-        if isinstance(obs, tuple): obs = obs[0]
-        if isinstance(obs, dict) and 'rgb' in obs: obs = obs['rgb']
-        
+
+        if isinstance(obs, tuple):
+            obs = obs[0]
+        if isinstance(obs, dict) and "rgb" in obs:
+            obs = obs["rgb"]
+
         obs = np.transpose(obs, (0, 3, 1, 2))
-        
+
         obs = torch.from_numpy(obs).float().to(self.device) / 255.0
         reward = torch.from_numpy(reward).float().to(self.device)
         done = torch.from_numpy(done).float().to(self.device)
-        
+
         return obs, reward, done, False, info
+
 
 class SyncGroupedProcgenEnv(gym.Wrapper):
     def __init__(self, venv, num_envs, group_size, controller):
@@ -148,9 +154,9 @@ class SyncGroupedProcgenEnv(gym.Wrapper):
         else:
             obs = ret
             is_tuple = False
-            
+
         try:
-            states = self.controller.call_method('get_state')
+            states = self.controller.call_method("get_state")
         except AttributeError:
             states = self.controller.get_state()
 
@@ -159,49 +165,61 @@ class SyncGroupedProcgenEnv(gym.Wrapper):
             group_id = i // self.group_size
             leader_idx = group_id * self.group_size
             new_states.append(states[leader_idx])
-            
+
         try:
-            self.controller.call_method('set_state', new_states)
+            self.controller.call_method("set_state", new_states)
         except AttributeError:
-             self.controller.set_state(new_states)
-        
+            self.controller.set_state(new_states)
+
         if isinstance(obs, np.ndarray):
             for i in range(self.num_envs):
                 group_id = i // self.group_size
                 leader_idx = group_id * self.group_size
                 obs[i] = obs[leader_idx]
-        elif isinstance(obs, dict) and 'rgb' in obs:
-             rgb = obs['rgb']
-             for i in range(self.num_envs):
+        elif isinstance(obs, dict) and "rgb" in obs:
+            rgb = obs["rgb"]
+            for i in range(self.num_envs):
                 group_id = i // self.group_size
                 leader_idx = group_id * self.group_size
                 rgb[i] = rgb[leader_idx]
-        
+
         return (obs, info) if is_tuple else obs
+
 
 def make_grouped_env(args, device):
     venv = ProcgenEnv(
         num_envs=args.num_envs,
         env_name=args.env_id,
-        num_levels=0, 
+        num_levels=0,
         start_level=0,
         distribution_mode=args.distribution_mode,
         rand_seed=args.seed,
     )
-    controller = venv.env 
+    controller = venv.env
     venv = SyncGroupedProcgenEnv(venv, args.num_envs, args.group_size, controller)
     venv = VecPyTorch(venv, device)
     return venv
+
 
 # =============================================================================
 # 3. MODEL DEFINITION
 # =============================================================================
 
+
 class GRPOAgent(nn.Module):
-    def __init__(self, encoder_type, envs, width_scale=1, out_features=256, 
-                 cnn_filters=(16, 32, 32), activation='relu', p_augment=0.0, micro_dropout_p=0.0):
+    def __init__(
+        self,
+        encoder_type,
+        envs,
+        width_scale=1,
+        out_features=256,
+        cnn_filters=(16, 32, 32),
+        activation="relu",
+        p_augment=0.0,
+        micro_dropout_p=0.0,
+    ):
         super().__init__()
-        
+
         encoder, out_features = encoder_factory(
             encoder_type=encoder_type,
             envs=envs,
@@ -211,12 +229,11 @@ class GRPOAgent(nn.Module):
             activation=activation,
             use_layer_init_normed=False,
             p_augment=p_augment,
-            micro_dropout_p=micro_dropout_p
+            micro_dropout_p=micro_dropout_p,
         )
         self.encoder = encoder
         self.action_head = layer_init_orthogonal(
-            nn.Linear(out_features, envs.single_action_space.n), 
-            std=0.01
+            nn.Linear(out_features, envs.single_action_space.n), std=0.01
         )
 
     def forward(self, x):
@@ -230,37 +247,51 @@ class GRPOAgent(nn.Module):
         entropy = pi.entropy()
         return a, logp, entropy
 
+
 # =============================================================================
 # 4. TRAINING LOGIC
 # =============================================================================
 
-def compute_group_relative_advantages(rewards: torch.Tensor, group_size: int) -> torch.Tensor:
+
+def compute_group_relative_advantages(
+    rewards: torch.Tensor, group_size: int
+) -> torch.Tensor:
     N = rewards.shape[0]
     num_full_groups = N // group_size
     truncated_N = num_full_groups * group_size
-    
+
     grouped = rewards[:truncated_N].view(num_full_groups, group_size)
-    
+
     group_means = grouped.mean(dim=1, keepdim=True)
     # Adding a slightly larger epsilon to avoid exploding advantages on flat rewards
-    group_stds = grouped.std(dim=1, keepdim=True) + 1e-5 
-    
+    group_stds = grouped.std(dim=1, keepdim=True) + 1e-5
+
     adv = (grouped - group_means) / group_stds
     return adv.view(-1)
 
+
 def train_grpo_agent(args, logger, envs, agent, optimizer, device):
     episodeQueueCalculator = EpisodeQueueCalculator(
-        'train', args.seed, args.normalize_reward, 100, args.env_id,
-        args.num_envs, args.distribution_mode, device
+        "train",
+        args.seed,
+        args.normalize_reward,
+        100,
+        args.env_id,
+        args.num_envs,
+        args.distribution_mode,
+        device,
     )
 
     ref_agent = copy.deepcopy(agent)
     ref_agent.eval()
-    for param in ref_agent.parameters(): param.requires_grad = False
+    for param in ref_agent.parameters():
+        param.requires_grad = False
 
     obs_shape = envs.single_observation_space.shape
     obs_buf = torch.zeros((args.num_steps, args.num_envs) + obs_shape, device=device)
-    act_buf = torch.zeros((args.num_steps, args.num_envs), device=device, dtype=torch.long)
+    act_buf = torch.zeros(
+        (args.num_steps, args.num_envs), device=device, dtype=torch.long
+    )
     rew_buf = torch.zeros((args.num_steps, args.num_envs), device=device)
     done_buf = torch.zeros((args.num_steps, args.num_envs), device=device)
     logp_old_buf = torch.zeros((args.num_steps, args.num_envs), device=device)
@@ -272,7 +303,10 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
     iter_start = time.time()
 
     for iteration in trange(1, args.num_iterations + 1):
-        if args.ref_policy_update_freq > 0 and iteration % args.ref_policy_update_freq == 0:
+        if (
+            args.ref_policy_update_freq > 0
+            and iteration % args.ref_policy_update_freq == 0
+        ):
             ref_agent.load_state_dict(agent.state_dict())
 
         # --- ROLLOUT ---
@@ -297,7 +331,9 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
             if isinstance(info, list):
                 for item in info:
                     if "episode" in item:
-                        episodeQueueCalculator.extend({"_episode": [True], "episode": [item["episode"]]})
+                        episodeQueueCalculator.extend(
+                            {"_episode": [True], "episode": [item["episode"]]}
+                        )
 
         # --- RETURNS ---
         returns = torch.zeros_like(rew_buf)
@@ -314,7 +350,9 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
         B_ref_logp = ref_logp_buf.reshape(-1)
 
         # --- ADVANTAGE ---
-        advantages = compute_group_relative_advantages(B_ret, group_size=args.group_size)
+        advantages = compute_group_relative_advantages(
+            B_ret, group_size=args.group_size
+        )
 
         batch_size = B_obs.shape[0]
         mb_size = int(batch_size // args.num_minibatches)
@@ -341,7 +379,7 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
 
                 # Ratio
                 ratio = (logp - mb_old_logp).exp()
-                
+
                 # Ref KL (Purely for logging/penalty, not optimization target)
                 with torch.no_grad():
                     # We log the ACTUAL distance from Ref to Current
@@ -350,12 +388,14 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
                 # --- HYBRID GRPO LOSS ---
                 # 1. Clipped Surrogate (Safety Belt)
                 pg_loss1 = -mb_adv * ratio
-                pg_loss2 = -mb_adv * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+                pg_loss2 = -mb_adv * torch.clamp(
+                    ratio, 1 - args.clip_coef, 1 + args.clip_coef
+                )
                 pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-                
+
                 # 2. KL Penalty (Drift control)
-                kl_loss = args.kl_coef * (logp - mb_ref_logp).mean() 
-                
+                kl_loss = args.kl_coef * (logp - mb_ref_logp).mean()
+
                 # 3. Entropy Bonus
                 ent_loss = -args.ent_coef * entropy.mean()
 
@@ -377,20 +417,43 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
 
         eval_int = max(1, args.num_iterations // args.n_datapoints_csv)
         if iteration % eval_int == 0 or iteration == args.num_iterations:
-            cumulative_time += (time.time() - iter_start)
-            (tr_rew, tr_med, tr_ticks, tr_steps, tr_succ, tr_spl, tr_lvls, tr_cnt) = episodeQueueCalculator.get_statistics()
-            
-            print(f"Iter {iteration}: TrainRew {tr_rew:.2f} | KL(Ref) {avg_ref_kl:.4f} | Ent {avg_ent:.4f}")
+            cumulative_time += time.time() - iter_start
+            (tr_rew, tr_med, tr_ticks, tr_steps, tr_succ, tr_spl, tr_lvls, tr_cnt) = (
+                episodeQueueCalculator.get_statistics()
+            )
+
+            print(
+                f"Iter {iteration}: TrainRew {tr_rew:.2f} | KL(Ref) {avg_ref_kl:.4f} | Ent {avg_ent:.4f}"
+            )
 
             logger.log(
-                avg_loss, avg_ent, avg_ref_kl, 
-                0.0, 0.0, [], 0, 0, 0, 0.0, 0.0,
-                tr_rew, tr_med, tr_lvls, tr_cnt, tr_ticks, tr_steps, tr_succ, tr_spl,
-                iteration, global_step, cumulative_time,
+                avg_loss,
+                avg_ent,
+                avg_ref_kl,
+                0.0,
+                0.0,
+                [],
+                0,
+                0,
+                0,
+                0.0,
+                0.0,
+                tr_rew,
+                tr_med,
+                tr_lvls,
+                tr_cnt,
+                tr_ticks,
+                tr_steps,
+                tr_succ,
+                tr_spl,
+                iteration,
+                global_step,
+                cumulative_time,
             )
             iter_start = time.time()
 
     return envs, agent, global_step
+
 
 # =============================================================================
 # 5. MAIN
@@ -398,18 +461,21 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
-    
+
     # Safety
-    if args.learning_rate > 1.0: args.learning_rate = 5e-5
+    if args.learning_rate > 1.0:
+        args.learning_rate = 5e-5
 
     args.batch_size = int(args.num_envs * args.num_steps)
     args.run_name = f"{args.env_id}_GRPOv2_{datetime.now().strftime('%Y%m%d_%H%M')}"
     args.output_dir = os.path.join(args.output_dir, args.run_name)
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     logger = Logger(args)
     global progcen_hns
-    progcen_hns.update(progcen_easy_hns if args.distribution_mode == "easy" else progcen_hard_hns)
+    progcen_hns.update(
+        progcen_easy_hns if args.distribution_mode == "easy" else progcen_hard_hns
+    )
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -418,9 +484,9 @@ if __name__ == "__main__":
     device = get_device()
 
     print(f"--- GRPO v2 (Clipped) on {device} ---")
-    
+
     envs = make_grouped_env(args, device)
-    
+
     agent = GRPOAgent(
         encoder_type=args.encoder_type,
         envs=envs,
@@ -429,17 +495,26 @@ if __name__ == "__main__":
         cnn_filters=args.cnn_filters,
         activation=args.activation,
     ).to(device)
-    
+
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
-    
+
     if args.rescale_lr_by_scale:
-        optimizer.param_groups[0]["lr"] /= (args.scale / 2)
+        optimizer.param_groups[0]["lr"] /= args.scale / 2
 
     args.num_iterations = args.total_timesteps // args.batch_size
 
     try:
         train_grpo_agent(args, logger, envs, agent, optimizer, device)
-        save_checkpoint(agent, optimizer, args, args.total_timesteps, envs, args.output_dir, args.run_name, "final")
+        save_checkpoint(
+            agent,
+            optimizer,
+            args,
+            args.total_timesteps,
+            envs,
+            args.output_dir,
+            args.run_name,
+            "final",
+        )
     except KeyboardInterrupt:
         print("Interrupted.")
     finally:

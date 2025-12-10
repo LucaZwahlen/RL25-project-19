@@ -25,6 +25,7 @@ class DRACTransformColor(nn.Module):
         brightness = 0.95 + 0.1 * torch.rand(1, device=self.device)  # 0.8 to 1.2
         return torch.clamp(x.float() * brightness, 0, 255).byte()
 
+
 # No action remapping needed!
 
 

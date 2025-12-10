@@ -1,33 +1,50 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_atari_envpoolpy
 import time
-from collections import deque
-import gymnasium as gym
 
+import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
 from tqdm import trange
 
-from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
-                                                   Logger)
-from impoola_cnn.impoola.utils.evaluate_test_performance import \
-    evaluate_test_performance
+from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator, Logger
+from impoola_cnn.impoola.utils.evaluate_test_performance import (
+    evaluate_test_performance,
+)
+
 
 def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
-    """ Train the GRPO agent (FIXED) """
+    """Train the GRPO agent (FIXED)"""
 
     # Track training episode statistics
-    episodeQueueCalculator = EpisodeQueueCalculator('all-knowing' if args.is_all_knowing else 'train', args.seed, args.normalize_reward,
-                                                    100, args.env_id, args.num_envs, args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator(
+        "all-knowing" if args.is_all_knowing else "train",
+        args.seed,
+        args.normalize_reward,
+        100,
+        args.env_id,
+        args.num_envs,
+        args.distribution_mode,
+        device,
+    )
 
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape, device=device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape, device=device)
+    obs = torch.zeros(
+        (args.num_steps, args.num_envs) + envs.single_observation_space.shape,
+        device=device,
+    )
+    actions = torch.zeros(
+        (args.num_steps, args.num_envs) + envs.single_action_space.shape, device=device
+    )
     logprobs = torch.zeros((args.num_steps, args.num_envs), device=device)
     rewards = torch.zeros((args.num_steps, args.num_envs), device=device)
-    dones = torch.zeros((args.num_steps, args.num_envs), device=device, dtype=torch.bool)
+    dones = torch.zeros(
+        (args.num_steps, args.num_envs), device=device, dtype=torch.bool
+    )
     values = torch.zeros((args.num_steps, args.num_envs), device=device)
-    logits = torch.zeros((args.num_steps, args.num_envs, envs.single_action_space.n), device=device)
+    logits = torch.zeros(
+        (args.num_steps, args.num_envs, envs.single_action_space.n), device=device
+    )
 
     gamma = torch.tensor(args.gamma, device=device)
     gae_lambda = torch.tensor(args.gae_lambda, device=device)
@@ -38,7 +55,7 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
     # clip_vloss = torch.tensor(args.clip_vloss, device=device)
     learning_rate = optimizer.param_groups[0]["lr"].clone()
     max_grad_norm = torch.tensor(args.max_grad_norm, device=device)
-    
+
     # GRPO Specific Hyperparameter
     beta_kl = 0.04  # Coefficient for KL penalty (Targeting ~0.01 KL)
 
@@ -70,7 +87,9 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, pi_logits = agent.get_action_and_value(next_obs)
+                action, logprob, _, value, pi_logits = agent.get_action_and_value(
+                    next_obs
+                )
 
                 if isinstance(envs.single_action_space, gym.spaces.Discrete):
                     n_actions = envs.single_action_space.n
@@ -78,14 +97,16 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
                     if invalid_mask.any():
                         print(f"⚠️ Invalid actions detected: {action[invalid_mask]}")
                         action = torch.clamp(action, 0, n_actions - 1)
-                
+
                 values[step] = value.flatten()
                 logits[step] = pi_logits
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminated, truncated, info = envs.step(action.cpu().numpy())
+            next_obs, reward, terminated, truncated, info = envs.step(
+                action.cpu().numpy()
+            )
             next_done = np.logical_or(terminated, truncated)
 
             rewards[step] = torch.tensor(reward, device=device).view(-1)
@@ -97,8 +118,18 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
             # Collect training episode rewards
             if "_episode" in info.keys():
                 episodeQueueCalculator.extend(info)
-        advantages, returns = grpo_gae(agent, next_done, next_obs, rewards, dones, values, gamma, gae_lambda, device,
-                                      args.num_steps)
+        advantages, returns = grpo_gae(
+            agent,
+            next_done,
+            next_obs,
+            rewards,
+            dones,
+            values,
+            gamma,
+            gae_lambda,
+            device,
+            args.num_steps,
+        )
         # flatten the batch
         batch_size = args.num_steps * args.num_envs
         b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
@@ -108,9 +139,7 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
-        
-
-        # NOTE: Global advantage normalization removed here. 
+        # NOTE: Global advantage normalization removed here.
         # GRPO relies on 'Group Relative' normalization inside the loss function.
         batch_size = args.num_steps * args.num_envs
         b_advantages = advantages.reshape(-1)
@@ -121,13 +150,13 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
         total_value_loss = 0
         total_entropy_loss = 0
         n_updates = 0
-        
+
         # --- GRPO BATCHING LOGIC FIX ---
         # We define a "Group" as all envs at a specific timestep.
         # This ensures we compare agents that are in statistically similar states.
-        group_size = args.num_envs 
-        num_groups = args.num_steps # Total groups available
-        
+        group_size = args.num_envs
+        num_groups = args.num_steps  # Total groups available
+
         # Ensure minibatch size makes sense for groups
         groups_per_minibatch = max(1, args.minibatch_size // group_size)
 
@@ -135,7 +164,7 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
         for epoch in range(args.update_epochs):
             # Standard shuffling is fine here because we aren't grouping neighbors
             b_inds = torch.randperm(batch_size, device=device)
-            
+
             for start in range(0, batch_size, args.minibatch_size):
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
@@ -143,21 +172,23 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
                 loss, pg_loss, v_loss, entropy_loss, voting_loss = grpo_consensus_loss(
                     agent,
                     b_obs[mb_inds],
-                    b_logprobs[mb_inds], 
+                    b_logprobs[mb_inds],
                     b_actions[mb_inds],
-                    b_values[mb_inds], 
+                    b_values[mb_inds],
                     b_returns[mb_inds],
                     b_advantages[mb_inds],
-                    ent_coef, 
+                    ent_coef,
                     vf_coef,
-                    beta=0.04,          # KL Penalty
-                    consensus_coef=0.5, # Adjust this: Higher = more imitation of best past actions
-                    top_p=0.25          # We learn from the top 25% of experiences
+                    beta=0.04,  # KL Penalty
+                    consensus_coef=0.5,  # Adjust this: Higher = more imitation of best past actions
+                    top_p=0.25,  # We learn from the top 25% of experiences
                 )
 
                 # Logging only (Approx KL is now handled inside grpo_loss via beta)
                 with torch.no_grad():
-                    _, newlogprob, _, _, _ = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds].long())
+                    _, newlogprob, _, _, _ = agent.get_action_and_value(
+                        b_obs[mb_inds], b_actions[mb_inds].long()
+                    )
                     logratio = newlogprob - b_logprobs[mb_inds]
                     ratio = logratio.exp()
                     approx_kl = ((ratio - 1) - logratio).mean()
@@ -176,22 +207,55 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
                 break
 
         # ... (Rest of evaluation code remains unchanged) ...
-        eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
-        do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)
+        eval_interval = (
+            max(1, args.num_iterations // args.n_datapoints_csv)
+            if args.n_datapoints_csv
+            else 1
+        )
+        do_eval = (
+            args.num_iterations == 0
+            or (iteration % eval_interval == 0)
+            or (iteration == args.num_iterations)
+        )
         if do_eval:
             avg_policy_loss = total_policy_loss / n_updates
             avg_value_loss = total_value_loss / n_updates
             avg_entropy_loss = total_entropy_loss / n_updates
 
             iteration_end_time = time.time()
-            cumulative_training_time += (iteration_end_time - iteration_start_time)
+            cumulative_training_time += iteration_end_time - iteration_start_time
 
             simple, detailed = evaluate_test_performance(agent, args, device)
 
-            test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = simple
-            test_rewards, test_num_ticks, test_num_steps, test_is_success, test_spl_terms, _ = detailed
+            (
+                test_mean_reward,
+                test_median_reward,
+                test_ticks,
+                test_steps,
+                test_success,
+                test_spl,
+                test_levels,
+                test_count,
+            ) = simple
+            (
+                test_rewards,
+                test_num_ticks,
+                test_num_steps,
+                test_is_success,
+                test_spl_terms,
+                _,
+            ) = detailed
 
-            train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
+            (
+                train_mean_reward,
+                train_median_reward,
+                train_ticks,
+                train_steps,
+                train_success,
+                train_spl,
+                train_levels,
+                train_count,
+            ) = episodeQueueCalculator.get_statistics()
 
             logger.log(
                 avg_policy_loss,
@@ -215,11 +279,18 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
                 train_spl,
                 iteration,
                 global_step,
-                cumulative_training_time
+                cumulative_training_time,
             )
 
             if args.extensive_logging:
-                train_rewards, train_num_ticks, train_num_steps, train_is_success, train_spl_terms, _ = episodeQueueCalculator.get_raw_counts()
+                (
+                    train_rewards,
+                    train_num_ticks,
+                    train_num_steps,
+                    train_is_success,
+                    train_spl_terms,
+                    _,
+                ) = episodeQueueCalculator.get_raw_counts()
 
                 logger.log_extensive(
                     avg_policy_loss,
@@ -237,7 +308,7 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
                     train_spl_terms,
                     iteration,
                     global_step,
-                    cumulative_training_time
+                    cumulative_training_time,
                 )
 
             iteration_start_time = time.time()

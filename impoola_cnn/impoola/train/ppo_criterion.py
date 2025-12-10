@@ -1,13 +1,30 @@
 import torch
 
 
-def ppo_loss(agent, mb_obs, mb_logprobs, mb_actions, mb_values, mb_returns, mb_advantages, mb_advantages2, norm_adv,
-             clip_coef, ent_coef, vf_coef, clip_vloss):
-    _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(mb_obs, mb_actions.long())
+def ppo_loss(
+    agent,
+    mb_obs,
+    mb_logprobs,
+    mb_actions,
+    mb_values,
+    mb_returns,
+    mb_advantages,
+    mb_advantages2,
+    norm_adv,
+    clip_coef,
+    ent_coef,
+    vf_coef,
+    clip_vloss,
+):
+    _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(
+        mb_obs, mb_actions.long()
+    )
     logratio = newlogprob - mb_logprobs
     ratio = logratio.exp()
 
-    mb_advantages = (mb_advantages - mb_advantages2.mean()) / (mb_advantages2.std() + 1e-8)
+    mb_advantages = (mb_advantages - mb_advantages2.mean()) / (
+        mb_advantages2.std() + 1e-8
+    )
 
     # Policy loss
     pg_loss1 = -mb_advantages * ratio
@@ -24,7 +41,18 @@ def ppo_loss(agent, mb_obs, mb_logprobs, mb_actions, mb_values, mb_returns, mb_a
     return loss, pg_loss, v_loss, entropy_loss, logratio, ratio
 
 
-def ppo_gae(agent, next_done, next_obs, rewards, dones, values, gamma, gae_lambda, device, num_steps):
+def ppo_gae(
+    agent,
+    next_done,
+    next_obs,
+    rewards,
+    dones,
+    values,
+    gamma,
+    gae_lambda,
+    device,
+    num_steps,
+):
     with torch.no_grad():
         next_value = agent.get_value(next_obs).reshape(1, -1)
         advantages = torch.zeros_like(rewards, device=device)
@@ -37,6 +65,8 @@ def ppo_gae(agent, next_done, next_obs, rewards, dones, values, gamma, gae_lambd
                 nextnonterminal = ~dones[t + 1]
                 nextvalues = values[t + 1]
             delta = rewards[t] + gamma * nextvalues * nextnonterminal - values[t]
-            advantages[t] = lastgaelam = delta + gamma * gae_lambda * nextnonterminal * lastgaelam
+            advantages[t] = lastgaelam = (
+                delta + gamma * gae_lambda * nextnonterminal * lastgaelam
+            )
         returns = advantages + values
     return advantages, returns

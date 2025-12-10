@@ -10,13 +10,21 @@ for env in envs:
         for d in drac:
             exp_name = f"vtrace_drac_final_{d}_{env}_seed{s}"
             cmd = [
-                sys.executable, "-m", "impoola_cnn.vtrace_training",
-                "--drac_lambda", str(d),
-                "--exp_name", exp_name,
-                "--env_id", env,
-                "--encoder_type", "impala",
-                "--seed", str(s),
-                "--output_dir", f"vtrace_drac/{exp_name}",
+                sys.executable,
+                "-m",
+                "impoola_cnn.vtrace_training",
+                "--drac_lambda",
+                str(d),
+                "--exp_name",
+                exp_name,
+                "--env_id",
+                env,
+                "--encoder_type",
+                "impala",
+                "--seed",
+                str(s),
+                "--output_dir",
+                f"vtrace_drac/{exp_name}",
             ]
             print("Running:", " ".join(cmd), flush=True)
             subprocess.run(cmd)

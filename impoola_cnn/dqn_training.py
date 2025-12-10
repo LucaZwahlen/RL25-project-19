@@ -11,9 +11,11 @@ import torch
 import torch.optim as optim
 import tyro
 
-from impoola_cnn.impoola.eval.normalized_score_lists import (progcen_easy_hns,
-                                                             progcen_hard_hns,
-                                                             progcen_hns)
+from impoola_cnn.impoola.eval.normalized_score_lists import (
+    progcen_easy_hns,
+    progcen_hard_hns,
+    progcen_hns,
+)
 from impoola_cnn.impoola.maker.make_env import make_an_env
 from impoola_cnn.impoola.train.agents import DQNAgent
 from impoola_cnn.impoola.train.train_dqn_agent import train_dqn_agent
@@ -67,7 +69,7 @@ class Args:
     weight_decay: float = 0.0e-5
     latent_space_dim: int = 256
     cnn_filters: tuple = (16, 32, 32)
-    activation: str = 'relu'
+    activation: str = "relu"
     rescale_lr_by_scale: bool = True
 
     # ReDo settings
@@ -122,35 +124,45 @@ if __name__ == "__main__":
         torch.set_float32_matmul_precision("high")
         torch.backends.cudnn.benchmark = True
 
-    envs = make_an_env(args, seed=args.seed,
-                       normalize_reward=args.normalize_reward,
-                       full_distribution=False)
+    envs = make_an_env(
+        args,
+        seed=args.seed,
+        normalize_reward=args.normalize_reward,
+        full_distribution=False,
+    )
 
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    assert isinstance(
+        envs.single_action_space, gym.spaces.Discrete
+    ), "only discrete action space is supported"
 
     q_network = DQNAgent(
         encoder_type=args.encoder_type,
         envs=envs,
-        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
+        width_scale=args.scale,
+        out_features=args.latent_space_dim,
+        cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
         p_augment=args.p_augment,
-        micro_dropout_p=args.micro_dropout_p
+        micro_dropout_p=args.micro_dropout_p,
     ).to(device)
 
     target_network = DQNAgent(
         encoder_type=args.encoder_type,
         envs=envs,
-        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
+        width_scale=args.scale,
+        out_features=args.latent_space_dim,
+        cnn_filters=args.cnn_filters,
         activation=args.activation,
         use_layer_init_normed=False,
         p_augment=args.p_augment,
-        micro_dropout_p=args.micro_dropout_p
+        micro_dropout_p=args.micro_dropout_p,
     ).to(device)
 
     with torch.no_grad():
-        example_input = 127 * np.ones((1,) + envs.single_observation_space.shape).astype(
-            envs.single_observation_space.dtype)
+        example_input = 127 * np.ones(
+            (1,) + envs.single_observation_space.shape
+        ).astype(envs.single_observation_space.dtype)
         example_input = torch.tensor(example_input).to(device)
         q_network(example_input)
         target_network(example_input)
@@ -162,19 +174,32 @@ if __name__ == "__main__":
         lr=torch.tensor(args.learning_rate, device=device),
         eps=1e-5,  # default eps=1e-8
         weight_decay=args.weight_decay,
-        fused=True
+        fused=True,
     )
 
     if args.rescale_lr_by_scale:
         # LR was set for the default scale of 2, so we need to rescale it
         lr_scaling_factor = torch.tensor(args.scale / 2, device=device)
-        optimizer.param_groups[0]['lr'].copy_(optimizer.param_groups[0]['lr'] / lr_scaling_factor)
+        optimizer.param_groups[0]["lr"].copy_(
+            optimizer.param_groups[0]["lr"] / lr_scaling_factor
+        )
 
     target_network.load_state_dict(q_network.state_dict())
 
-    envs, q_network, global_step, b_obs = train_dqn_agent(args, logger, envs, (q_network, target_network), optimizer, device)
+    envs, q_network, global_step, b_obs = train_dqn_agent(
+        args, logger, envs, (q_network, target_network), optimizer, device
+    )
     envs.close()
     logger.close()
     agent = q_network
 
-    save_checkpoint(agent, optimizer, args, global_step, envs, args.output_dir, args.run_name, 'checkpoint_final')
+    save_checkpoint(
+        agent,
+        optimizer,
+        args,
+        global_step,
+        envs,
+        args.output_dir,
+        args.run_name,
+        "checkpoint_final",
+    )

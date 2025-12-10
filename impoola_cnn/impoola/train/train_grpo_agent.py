@@ -1,20 +1,27 @@
 import copy
+import time
+
+import numpy as np
 import torch
 import torch.nn as nn
 from tqdm import trange
-import numpy as np
-import time
 
 # Ensure these are imported from your project structure
 from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator
-from impoola_cnn.impoola.utils.evaluate_test_performance import evaluate_test_performance_grpo
+from impoola_cnn.impoola.utils.evaluate_test_performance import (
+    evaluate_test_performance_grpo,
+)
 
-def compute_group_relative_advantages(rewards: torch.Tensor, group_size: int) -> torch.Tensor:
+
+def compute_group_relative_advantages(
+    rewards: torch.Tensor, group_size: int
+) -> torch.Tensor:
     """
     Calculates advantage by normalizing returns within a group.
     """
     N = rewards.shape[0]
-    if group_size <= 0: raise ValueError("group_size must be positive")
+    if group_size <= 0:
+        raise ValueError("group_size must be positive")
 
     # If batch is smaller than group_size, just subtract global mean
     if N <= group_size:
@@ -24,14 +31,14 @@ def compute_group_relative_advantages(rewards: torch.Tensor, group_size: int) ->
 
     num_full_groups = N // group_size
     full_part = rewards[: num_full_groups * group_size]
-    tail_part = rewards[num_full_groups * group_size :] 
+    tail_part = rewards[num_full_groups * group_size :]
 
-    grouped = full_part.view(num_full_groups, group_size)           
-    group_means = grouped.mean(dim=1, keepdim=True)                 
+    grouped = full_part.view(num_full_groups, group_size)
+    group_means = grouped.mean(dim=1, keepdim=True)
     group_stds = grouped.std(dim=1, keepdim=True) + 1e-8
-    
-    full_adv = (grouped - group_means) / group_stds 
-    full_adv = full_adv.view(-1)                     
+
+    full_adv = (grouped - group_means) / group_stds
+    full_adv = full_adv.view(-1)
 
     if tail_part.numel() > 0:
         tail_mean = tail_part.mean()
@@ -43,11 +50,17 @@ def compute_group_relative_advantages(rewards: torch.Tensor, group_size: int) ->
 
     return advantages
 
+
 def train_grpo_agent(args, logger, envs, agent, optimizer, device):
     episodeQueueCalculator = EpisodeQueueCalculator(
-        'all-knowing' if args.is_all_knowing else 'train',
-        args.seed, args.normalize_reward, 100, args.env_id,
-        args.num_envs, args.distribution_mode, device
+        "all-knowing" if args.is_all_knowing else "train",
+        args.seed,
+        args.normalize_reward,
+        100,
+        args.env_id,
+        args.num_envs,
+        args.distribution_mode,
+        device,
     )
 
     # --- 1. SETUP REFERENCE MODEL (CRITICAL FOR GRPO) ---
@@ -58,8 +71,13 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
         param.requires_grad = False
 
     # Rollout buffers
-    obs_buf = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape, device=device)
-    act_buf = torch.zeros((args.num_steps, args.num_envs), device=device, dtype=torch.long)
+    obs_buf = torch.zeros(
+        (args.num_steps, args.num_envs) + envs.single_observation_space.shape,
+        device=device,
+    )
+    act_buf = torch.zeros(
+        (args.num_steps, args.num_envs), device=device, dtype=torch.long
+    )
     rew_buf = torch.zeros((args.num_steps, args.num_envs), device=device)
     done_buf = torch.zeros((args.num_steps, args.num_envs), device=device)
 
@@ -77,7 +95,10 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
     for iteration in trange(1, args.num_iterations + 1):
 
         # Update Reference Policy periodically
-        if args.ref_policy_update_freq > 0 and iteration % args.ref_policy_update_freq == 0:
+        if (
+            args.ref_policy_update_freq > 0
+            and iteration % args.ref_policy_update_freq == 0
+        ):
             ref_agent.load_state_dict(agent.state_dict())
 
         # ---------------- ROLLOUT ----------------
@@ -88,7 +109,7 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
             with torch.no_grad():
                 # Get Current Policy Action
                 act, logp, entropy = agent.act(next_obs)
-                
+
                 # Get Reference Policy LogProb (For KL calculation later)
                 # We strictly need the prob of the action chosen by the *current* agent
                 # calculated by the *ref* agent.
@@ -96,11 +117,11 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
                 ref_logp = ref_pi.log_prob(act)
 
             act_buf[t] = act
-            ref_logp_buf[t] = ref_logp # Store ref logp
+            ref_logp_buf[t] = ref_logp  # Store ref logp
 
             next_obs, reward, terminated, truncated, info = envs.step(act.cpu().numpy())
             next_obs = torch.tensor(next_obs, device=device)
-            
+
             rew_buf[t] = torch.tensor(reward, device=device, dtype=torch.float32)
             done = np.logical_or(terminated, truncated)
             done_buf[t] = torch.tensor(done, device=device, dtype=torch.float32)
@@ -113,14 +134,14 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
         # ---------------- CALCULATE RETURNS ----------------
         returns = torch.zeros_like(rew_buf)
         next_ret = torch.zeros(args.num_envs, device=device)
-        
+
         for t in reversed(range(args.num_steps)):
             next_ret = rew_buf[t] + args.gamma * next_ret * (1.0 - done_buf[t])
             returns[t] = next_ret
 
         # ---------------- FLATTEN BATCH ----------------
-        B_obs = obs_buf.reshape((-1,) + envs.single_observation_space.shape)   
-        B_act = act_buf.reshape(-1)                                            
+        B_obs = obs_buf.reshape((-1,) + envs.single_observation_space.shape)
+        B_act = act_buf.reshape(-1)
         B_ret = returns.reshape(-1)
         B_ref_logp = ref_logp_buf.reshape(-1)
 
@@ -129,7 +150,7 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
         # ---------------- ADVANTAGE (GROUP-RELATIVE) ----------------
         advantages = compute_group_relative_advantages(
             B_ret,
-            group_size=args.num_envs, 
+            group_size=args.num_envs,
         )
 
         # ---------------- UPDATE θ ----------------
@@ -161,13 +182,13 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
                 # simple approximation: logp - ref_logp
                 # Note: ref_logp is fixed from rollout, logp is differentiable
                 approx_kl = logp - mb_ref_logp
-            
+
             # GRPO Loss:
-            #L = - (Adv * logp) + (beta * KL) - (ent_coef * entropy)
-            
+            # L = - (Adv * logp) + (beta * KL) - (ent_coef * entropy)
+
             # 1. Policy Gradient
             pg_loss = -(mb_adv.detach() * logp).mean()
-            
+
             # 2. KL Penalty (Critical for GRPO stability)
             kl_loss = args.kl_coef * approx_kl.mean()
 
@@ -187,29 +208,47 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
             num_updates += 1
 
         avg_policy_loss = total_policy_loss / num_updates
-        avg_entropy_loss = total_entropy / num_updates # logged as positive usually
+        avg_entropy_loss = total_entropy / num_updates  # logged as positive usually
         avg_kl = total_kl / num_updates
 
         # ---------------- LOGGING ----------------
         eval_interval = max(1, args.num_iterations // args.n_datapoints_csv)
         if iteration % eval_interval == 0 or iteration == args.num_iterations:
             iteration_end_time = time.time()
-            cumulative_training_time += (iteration_end_time - iteration_start_time)
+            cumulative_training_time += iteration_end_time - iteration_start_time
 
             simple, detailed = evaluate_test_performance_grpo(agent, args, device)
-            (test_mean_reward, test_median_reward, test_ticks, test_steps,
-             test_success, test_spl, test_levels, test_count) = simple
-            
-            (train_mean_reward, train_median_reward, train_ticks, train_steps,
-             train_success, train_spl, train_levels, train_count) = episodeQueueCalculator.get_statistics()
+            (
+                test_mean_reward,
+                test_median_reward,
+                test_ticks,
+                test_steps,
+                test_success,
+                test_spl,
+                test_levels,
+                test_count,
+            ) = simple
+
+            (
+                train_mean_reward,
+                train_median_reward,
+                train_ticks,
+                train_steps,
+                train_success,
+                train_spl,
+                train_levels,
+                train_count,
+            ) = episodeQueueCalculator.get_statistics()
 
             # Added KL logging
-            print(f"Iter {iteration}: Rew {train_mean_reward:.2f} | KL {avg_kl:.4f} | Ent {avg_entropy_loss:.4f}")
+            print(
+                f"Iter {iteration}: Rew {train_mean_reward:.2f} | KL {avg_kl:.4f} | Ent {avg_entropy_loss:.4f}"
+            )
 
             logger.log(
                 avg_policy_loss,
-                avg_entropy_loss, # Log raw entropy, not negative
-                avg_kl,           # Replaced value_loss with KL since we have no critic
+                avg_entropy_loss,  # Log raw entropy, not negative
+                avg_kl,  # Replaced value_loss with KL since we have no critic
                 test_mean_reward,
                 test_median_reward,
                 test_levels,
@@ -230,7 +269,7 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
                 global_step,
                 cumulative_training_time,
             )
-            
+
             iteration_start_time = time.time()
 
     return envs, agent, global_step, B_obs

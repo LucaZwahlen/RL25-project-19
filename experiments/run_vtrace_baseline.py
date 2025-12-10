@@ -8,12 +8,19 @@ for env in envs:
     for seed in seeds:
         exp_name = f"vtrace_baseline_seed_{seed}_{env}"
         cmd = [
-            sys.executable, "-m", "impoola_cnn.vtrace_training",
-            "--exp_name", exp_name,
-            "--seed", str(seed),
-            "--env_id", env,
-            "--output_dir", f"vtrace_baseline/{exp_name}",
-            "--n_datapoints_csv", "500"
+            sys.executable,
+            "-m",
+            "impoola_cnn.vtrace_training",
+            "--exp_name",
+            exp_name,
+            "--seed",
+            str(seed),
+            "--env_id",
+            env,
+            "--output_dir",
+            f"vtrace_baseline/{exp_name}",
+            "--n_datapoints_csv",
+            "500",
         ]
         print("Running:", " ".join(cmd), flush=True)
         subprocess.run(cmd)

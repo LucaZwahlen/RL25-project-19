@@ -8,16 +8,21 @@ from sit.ucb_rl2_meta.Siet import Siet
 from sit.ucb_rl2_meta.utils import init
 
 
-def init_(m): return init(m, nn.init.orthogonal_, lambda x: nn.init.
-                          constant_(x, 0))
+def init_(m):
+    return init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
 
 
-def init_relu_(m): return init(m, nn.init.orthogonal_, lambda x: nn.init.
-                               constant_(x, 0), nn.init.calculate_gain('relu'))
+def init_relu_(m):
+    return init(
+        m,
+        nn.init.orthogonal_,
+        lambda x: nn.init.constant_(x, 0),
+        nn.init.calculate_gain("relu"),
+    )
 
 
-def init_tanh_(m): return init(m, nn.init.orthogonal_, lambda x: nn.init.
-                               constant_(x, 0), np.sqrt(2))
+def init_tanh_(m):
+    return init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2))
 
 
 def apply_init_(modules):
@@ -157,10 +162,14 @@ class Policy_Sit(nn.Module):
     Actor-Critic module
     """
 
-    def __init__(self, obs_shape, num_actions, device, choice=0, base_kwargs=None, hidden_size=64):
+    def __init__(
+        self, obs_shape, num_actions, device, choice=0, base_kwargs=None, hidden_size=64
+    ):
         super(Policy_Sit, self).__init__()
 
-        self.base = SiTBase(obs_shape[0], device, choice=choice, hidden_size=hidden_size, **base_kwargs)
+        self.base = SiTBase(
+            obs_shape[0], device, choice=choice, hidden_size=hidden_size, **base_kwargs
+        )
         fac = 1
         if choice == 12 or choice == 120:
             fac = 2
@@ -226,9 +235,9 @@ class NNBase(nn.Module):
         if recurrent:
             self.gru = nn.GRU(recurrent_input_size, hidden_size)
             for name, param in self.gru.named_parameters():
-                if 'bias' in name:
+                if "bias" in name:
                     nn.init.constant_(param, 0)
-                elif 'weight' in name:
+                elif "weight" in name:
                     nn.init.orthogonal_(param)
 
     @property
@@ -267,11 +276,7 @@ class NNBase(nn.Module):
 
             # Let's figure out which steps in the sequence have a zero for any agent
             # We will always assume t=0 has a zero in it as that makes the logic cleaner
-            has_zeros = ((masks[1:] == 0.0)
-                         .any(dim=-1)
-                         .nonzero()
-                         .squeeze()
-                         .cpu())
+            has_zeros = (masks[1:] == 0.0).any(dim=-1).nonzero().squeeze().cpu()
 
             # +1 to correct the masks[1:]
             if has_zeros.dim() == 0:
@@ -292,8 +297,8 @@ class NNBase(nn.Module):
                 end_idx = has_zeros[i + 1]
 
                 rnn_scores, hxs = self.gru(
-                    x[start_idx:end_idx],
-                    hxs * masks[start_idx].view(1, -1, 1))
+                    x[start_idx:end_idx], hxs * masks[start_idx].view(1, -1, 1)
+                )
 
                 outputs.append(rnn_scores)
 
@@ -319,12 +324,18 @@ class MLPBase(NNBase):
             num_inputs = hidden_size
 
         self.actor = nn.Sequential(
-            init_tanh_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_tanh_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+            init_tanh_(nn.Linear(num_inputs, hidden_size)),
+            nn.Tanh(),
+            init_tanh_(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh(),
+        )
 
         self.critic = nn.Sequential(
-            init_tanh_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_tanh_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+            init_tanh_(nn.Linear(num_inputs, hidden_size)),
+            nn.Tanh(),
+            init_tanh_(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh(),
+        )
 
         self.critic_linear = init_(nn.Linear(hidden_size, 1))
 
@@ -350,9 +361,13 @@ class BasicBlock(nn.Module):
     def __init__(self, n_channels, stride=1):
         super(BasicBlock, self).__init__()
 
-        self.conv1 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1))
+        self.conv1 = Conv2d_tf(
+            n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1)
+        )
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = Conv2d_tf(n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1))
+        self.conv2 = Conv2d_tf(
+            n_channels, n_channels, kernel_size=3, stride=1, padding=(1, 1)
+        )
         self.stride = stride
 
         apply_init_(self.modules())
@@ -376,7 +391,9 @@ class ResNetBase(NNBase):
     Residual Network
     """
 
-    def __init__(self, num_inputs, recurrent=False, hidden_size=256, channels=[16, 32, 32]):
+    def __init__(
+        self, num_inputs, recurrent=False, hidden_size=256, channels=[16, 32, 32]
+    ):
         super(ResNetBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         self.layer1 = self._make_layer(num_inputs, channels[0])
@@ -386,7 +403,9 @@ class ResNetBase(NNBase):
         self.flatten = Flatten()
         self.relu = nn.ReLU()
 
-        self.fc = init_relu_(nn.Linear(2048, hidden_size))  # self.fc = init_relu_(nn.Linear(2048//2, hidden_size))
+        self.fc = init_relu_(
+            nn.Linear(2048, hidden_size)
+        )  # self.fc = init_relu_(nn.Linear(2048//2, hidden_size))
         self.critic_linear = init_(nn.Linear(hidden_size, 1))
 
         apply_init_(self.modules())
@@ -410,7 +429,7 @@ class ResNetBase(NNBase):
         bs, h, w, c = x.size()
         patches = x.unfold(1, ps, ps).permute(0, 1, 4, 2, 3)
         patches = patches.unfold(3, ps, ps).permute(0, 1, 3, 2, 5, 4)
-        return patches.reshape((-1, ps ** 2, c))  #
+        return patches.reshape((-1, ps**2, c))  #
 
     def forward(self, inputs, rnn_hxs, masks):
         x = inputs
@@ -433,7 +452,9 @@ class ResNetBaseTiny(NNBase):
     Residual Network
     """
 
-    def __init__(self, num_inputs, recurrent=False, hidden_size=64, channels=[4, 8, 16]):  # resnet small -> baseline
+    def __init__(
+        self, num_inputs, recurrent=False, hidden_size=64, channels=[4, 8, 16]
+    ):  # resnet small -> baseline
         super(ResNetBaseTiny, self).__init__(recurrent, num_inputs, hidden_size)
 
         self.layer1 = self._make_layer(num_inputs, channels[0])
@@ -443,7 +464,9 @@ class ResNetBaseTiny(NNBase):
         self.flatten = Flatten()
         self.relu = nn.ReLU()
 
-        self.fc = init_relu_(nn.Linear(2048 // 2, hidden_size))  # self.fc = init_relu_(nn.Linear(2048//2, hidden_size))
+        self.fc = init_relu_(
+            nn.Linear(2048 // 2, hidden_size)
+        )  # self.fc = init_relu_(nn.Linear(2048//2, hidden_size))
         self.critic_linear = init_(nn.Linear(hidden_size, 1))
 
         apply_init_(self.modules())
@@ -467,7 +490,7 @@ class ResNetBaseTiny(NNBase):
         bs, h, w, c = x.size()
         patches = x.unfold(1, ps, ps).permute(0, 1, 4, 2, 3)
         patches = patches.unfold(3, ps, ps).permute(0, 1, 3, 2, 5, 4)
-        return patches.reshape((-1, ps ** 2, c))  #
+        return patches.reshape((-1, ps**2, c))  #
 
     def forward(self, inputs, rnn_hxs, masks):
         x = inputs
@@ -505,8 +528,15 @@ class SiTBase(NNBase):
 
         apply_init_(self.modules())
         if choice == 0:
-            self.encoder_obs = Siet(img_size=64, action_dim=15, depth=2, in_chans=3, patch_size=8,
-                                    embed_dim=hidden_size, num_heads=8)
+            self.encoder_obs = Siet(
+                img_size=64,
+                action_dim=15,
+                depth=2,
+                in_chans=3,
+                patch_size=8,
+                embed_dim=hidden_size,
+                num_heads=8,
+            )
         else:
             raise NotImplementedError("SiT - Tiny is not implemented, use choice=0")
 
@@ -524,6 +554,7 @@ class SiTBase(NNBase):
 
 
 # ------------------------------------------------------
+
 
 class AugCNN(nn.Module):
     """

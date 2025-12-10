@@ -1,6 +1,6 @@
 success_rewards = {
-    'chaser': 10,
-    'fruitbot': 20,
+    "chaser": 10,
+    "fruitbot": 20,
 }
 
 

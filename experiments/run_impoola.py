@@ -1,11 +1,14 @@
 import argparse
 import os
+
 import numpy as np
 import torch
+
 from impoola_cnn.impoola.maker.make_env import make_procgen_env
 from impoola_cnn.impoola.train.agents import PPOAgent, Vtrace
 from impoola_cnn.impoola.utils.save_load import load_checkpoint
 from impoola_cnn.impoola.utils.utils import get_device
+
 
 def print_run_config(args, device, model_found, extra=None):
     line = "=" * 80
@@ -32,7 +35,7 @@ def print_run_config(args, device, model_found, extra=None):
             print(f"{k:<22}: {v}")
     print(sub)
     if model_found:
-        print(f"Model file            : FOUND")
+        print("Model file            : FOUND")
     else:
         warn = "!!! CHECKPOINT NOT FOUND - RUNNING WITHOUT A LOADED MODEL !!!"
         pad = (80 - len(warn)) // 2
@@ -40,6 +43,7 @@ def print_run_config(args, device, model_found, extra=None):
         print(" " * pad + warn)
         print("=" * 80)
     print(line)
+
 
 def build_agent(args, envs, device):
     common = dict(
@@ -49,7 +53,7 @@ def build_agent(args, envs, device):
         out_features=args.latent_space_dim,
         cnn_filters=tuple(args.cnn_filters),
         activation=args.activation,
-        use_layer_init_normed=False
+        use_layer_init_normed=False,
     )
     if args.agent.lower() == "ppo":
         agent = PPOAgent(**common).to(device)
@@ -59,10 +63,13 @@ def build_agent(args, envs, device):
         raise ValueError("agent must be PPO or Vtrace")
     return agent
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env_id", type=str, default="fruitbot")
-    parser.add_argument("--distribution_mode", type=str, default="easy", choices=["easy", "hard"])
+    parser.add_argument(
+        "--distribution_mode", type=str, default="easy", choices=["easy", "hard"]
+    )
     parser.add_argument("--num_envs", type=int, default=1)
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--checkpoint", type=str, default="")
@@ -75,7 +82,9 @@ def main():
     parser.add_argument("--agent", type=str, default="Vtrace")
     args = parser.parse_args()
 
-    class TempArgs: pass
+    class TempArgs:
+        pass
+
     targs = TempArgs()
     targs.env_id = args.env_id
     targs.num_envs = args.num_envs
@@ -87,7 +96,7 @@ def main():
         normalize_reward=False,
         rand_seed=1,
         render=True,
-        distribution_mode=args.distribution_mode
+        distribution_mode=args.distribution_mode,
     )
 
     device = get_device()
@@ -102,7 +111,11 @@ def main():
         args=args,
         device=device,
         model_found=model_found,
-        extra={"Action space": getattr(getattr(envs, "single_action_space", None), "n", "?")}
+        extra={
+            "Action space": getattr(
+                getattr(envs, "single_action_space", None), "n", "?"
+            )
+        },
     )
 
     obs, _ = envs.reset()
@@ -119,15 +132,20 @@ def main():
                 else:
                     action, _, _, _, _ = agent.get_action_and_value(obs)
             else:
-                action = torch.randint(0, envs.single_action_space.n, (args.num_envs,), device=device)
+                action = torch.randint(
+                    0, envs.single_action_space.n, (args.num_envs,), device=device
+                )
 
-            next_obs, reward, terminated, truncated, info = envs.step(action.detach().cpu().numpy())
+            next_obs, reward, terminated, truncated, info = envs.step(
+                action.detach().cpu().numpy()
+            )
             done = np.logical_or(terminated, truncated)
             obs = torch.as_tensor(next_obs, device=device)
             if done.any():
                 ep_count += int(done.sum())
 
     envs.close()
+
 
 if __name__ == "__main__":
     main()

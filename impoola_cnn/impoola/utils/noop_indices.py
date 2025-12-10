@@ -18,8 +18,8 @@
 # https://github.com/openai/procgen/blob/5e1dbf341d291eff40d1f9e0c0a0d5003643aebf/procgen/src/games/chaser.cpp
 
 noop_indices = {
-    'fruitbot': [3, 4, 5, 10, 11, 12, 13, 14],
-    'chaser': [4, 9, 10, 11, 12, 13, 14],
+    "fruitbot": [3, 4, 5, 10, 11, 12, 13, 14],
+    "chaser": [4, 9, 10, 11, 12, 13, 14],
 }
 
 

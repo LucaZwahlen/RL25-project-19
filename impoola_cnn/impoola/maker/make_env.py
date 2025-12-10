@@ -73,6 +73,7 @@ class NoopPenaltyWrapper(gym.Wrapper):
         super().__init__(env)
         self.penalty_scale = penalty_scale
         from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
+
         noop_indices = get_noop_indices(env_id)
         self.noop_mask = np.zeros(env.action_space.n, dtype=bool)
         self.noop_mask[noop_indices] = True
@@ -81,7 +82,7 @@ class NoopPenaltyWrapper(gym.Wrapper):
         obs, reward, terminated, truncated, info = self.env.step(action)
 
         # Apply penalty before normalization
-        if hasattr(action, '__len__'):  # Vectorized
+        if hasattr(action, "__len__"):  # Vectorized
             penalty_mask = ~self.noop_mask[action]
             penalty = penalty_mask * self.penalty_scale
             reward = reward - penalty
@@ -92,7 +93,15 @@ class NoopPenaltyWrapper(gym.Wrapper):
         return obs, reward, terminated, truncated, info
 
 
-def _make_procgen_env(num_envs, env_id, num_levels, start_level, rand_seed, render=False, distribution_mode="easy"):
+def _make_procgen_env(
+    num_envs,
+    env_id,
+    num_levels,
+    start_level,
+    rand_seed,
+    render=False,
+    distribution_mode="easy",
+):
     # print(f"Using track: {env_track} (num_levels: {num_levels})")
 
     # if distribution_mode != "easy" and env_id not in ["coinrun", "ninja", "climber", "fruitbot", "caveflyer"]:
@@ -113,21 +122,36 @@ def _make_procgen_env(num_envs, env_id, num_levels, start_level, rand_seed, rend
         envs = ViewerWrapper(envs, info_key="rgb")
     envs = ProcgenToGymNewAPI(ToBaselinesVecEnv(envs))
 
-    envs = gym.wrappers.TransformObservation(envs, lambda obs: obs["rgb"].transpose((0, 3, 1, 2)))
+    envs = gym.wrappers.TransformObservation(
+        envs, lambda obs: obs["rgb"].transpose((0, 3, 1, 2))
+    )
     envs.single_action_space = envs.action_space
-    envs.single_observation_space = type(envs.observation_space["rgb"])(low=0, high=255, shape=(3, 64, 64),
-                                                                        dtype=np.uint8)
+    envs.single_observation_space = type(envs.observation_space["rgb"])(
+        low=0, high=255, shape=(3, 64, 64), dtype=np.uint8
+    )
     # TODO: Fix that only gym is used!
-    envs.single_observation_space_gymnasium = gymnasium.spaces.Box(low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
-    envs.single_action_space_gymnasium = gymnasium.spaces.Discrete(envs.single_action_space.n)
+    envs.single_observation_space_gymnasium = gymnasium.spaces.Box(
+        low=0, high=255, shape=(3, 64, 64), dtype=np.uint8
+    )
+    envs.single_action_space_gymnasium = gymnasium.spaces.Discrete(
+        envs.single_action_space.n
+    )
 
     envs.is_vector_env = True
-    envs.env_type = 'procgen'
+    envs.env_type = "procgen"
     return envs
 
 
-def make_procgen_env(args, full_distribution=False, normalize_reward=False, rand_seed=None, render=False,
-                     distribution_mode="easy", num_levels_override=None, start_level_override=None):
+def make_procgen_env(
+    args,
+    full_distribution=False,
+    normalize_reward=False,
+    rand_seed=None,
+    render=False,
+    distribution_mode="easy",
+    num_levels_override=None,
+    start_level_override=None,
+):
     # Num levels is 200 for easy games and 1000 for hard games when running in general track
     start_level = 0
 
@@ -139,17 +163,29 @@ def make_procgen_env(args, full_distribution=False, normalize_reward=False, rand
     if start_level_override is not None:
         start_level = start_level_override
 
-    envs = _make_procgen_env(args.num_envs, args.env_id, num_levels, start_level, rand_seed, render, distribution_mode)
+    envs = _make_procgen_env(
+        args.num_envs,
+        args.env_id,
+        num_levels,
+        start_level,
+        rand_seed,
+        render,
+        distribution_mode,
+    )
 
     envs = gym.wrappers.RecordEpisodeStatistics(envs)
 
     # Apply penalty BEFORE normalization
-    if hasattr(args, 'is_all_knowing') and args.is_all_knowing:
-        envs = NoopPenaltyWrapper(envs, penalty_scale=args.move_penalty, env_id=args.env_id)
+    if hasattr(args, "is_all_knowing") and args.is_all_knowing:
+        envs = NoopPenaltyWrapper(
+            envs, penalty_scale=args.move_penalty, env_id=args.env_id
+        )
 
     if normalize_reward:
         envs = gym.wrappers.NormalizeReward(envs, gamma=args.gamma)
-        envs = gym.wrappers.TransformReward(envs, lambda reward: np.clip(reward, -10, 10))
+        envs = gym.wrappers.TransformReward(
+            envs, lambda reward: np.clip(reward, -10, 10)
+        )
     return envs
 
 
@@ -160,7 +196,7 @@ def make_an_env(args, seed, normalize_reward, full_distribution=False):
             full_distribution=full_distribution,
             normalize_reward=normalize_reward,
             rand_seed=seed,
-            distribution_mode=args.distribution_mode
+            distribution_mode=args.distribution_mode,
         )
     else:
         raise ValueError(f"Unknown environment: {args.env_id}")

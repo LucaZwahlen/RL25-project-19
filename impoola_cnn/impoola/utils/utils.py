@@ -10,10 +10,18 @@ def network_summary(network, input_data, device):
 
     statistics = summary(
         network,
-        input_data=input_data, device=device,
+        input_data=input_data,
+        device=device,
         depth=10,  # 2,  # 10,
-        col_names=("input_size", "output_size", "num_params", "kernel_size", "params_percent", "mult_adds"),
-        verbose=1
+        col_names=(
+            "input_size",
+            "output_size",
+            "num_params",
+            "kernel_size",
+            "params_percent",
+            "mult_adds",
+        ),
+        verbose=1,
     )
     total_params = statistics.total_params
     m_macs = np.round(statistics.total_mult_adds / 1e6, 2)
@@ -58,12 +66,20 @@ class StopTimer:
 
 
 def get_device():
-    return torch.device("cuda" if torch.cuda.is_available() else "xpu" if torch.xpu.is_available() else "cpu")
+    return torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "xpu" if torch.xpu.is_available() else "cpu"
+    )
 
 
 def get_device_name():
     device = get_device()
-    return torch.cuda.get_device_name(0) if device.type == "cuda" else "XPU" if device.type == "xpu" else "CPU"
+    return (
+        torch.cuda.get_device_name(0)
+        if device.type == "cuda"
+        else "XPU" if device.type == "xpu" else "CPU"
+    )
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):

@@ -3,19 +3,38 @@ import sys
 sys.setrecursionlimit(10000)
 
 import numpy as np
-from stable_baselines3.common.buffers import ReplayBuffer
 import torch
-
+from stable_baselines3.common.buffers import ReplayBuffer
 
 # from stable_baselines3.common.segment_tree import SumSegmentTree, MinSegmentTree
 
+
 class MultiStepReplayBuffer(ReplayBuffer):
-    def __init__(self, buffer_size, observation_space, action_space, device, optimize_memory_usage=False,
-                 handle_timeout_termination=False, n_envs=1, n_steps=3, gamma=0.99):
+    def __init__(
+        self,
+        buffer_size,
+        observation_space,
+        action_space,
+        device,
+        optimize_memory_usage=False,
+        handle_timeout_termination=False,
+        n_envs=1,
+        n_steps=3,
+        gamma=0.99,
+    ):
         # Initialize the ReplayBuffer with a single environment's observation and action spaces
-        assert not optimize_memory_usage, "Memory optimization is not supported for multi-step replay buffers"
-        super(MultiStepReplayBuffer, self).__init__(buffer_size, observation_space, action_space, device, 1,
-                                                    optimize_memory_usage, handle_timeout_termination)
+        assert (
+            not optimize_memory_usage
+        ), "Memory optimization is not supported for multi-step replay buffers"
+        super(MultiStepReplayBuffer, self).__init__(
+            buffer_size,
+            observation_space,
+            action_space,
+            device,
+            1,
+            optimize_memory_usage,
+            handle_timeout_termination,
+        )
         self.n_envs_ = n_envs
         self.n_steps = n_steps
         self.gamma = gamma
@@ -24,12 +43,21 @@ class MultiStepReplayBuffer(ReplayBuffer):
     def add(self, obs, next_obs, action, reward, done, infos):
         for env_idx in range(self.n_envs_):
             self.n_step_buffers[env_idx].append(
-                (obs[env_idx], next_obs[env_idx], action[env_idx], reward[env_idx], done[env_idx]))
+                (
+                    obs[env_idx],
+                    next_obs[env_idx],
+                    action[env_idx],
+                    reward[env_idx],
+                    done[env_idx],
+                )
+            )
 
             if len(self.n_step_buffers[env_idx]) >= self.n_steps or done[env_idx]:
                 discounted_reward = 0
                 for i in range(len(self.n_step_buffers[env_idx])):
-                    discounted_reward += self.n_step_buffers[env_idx][i][3] * (self.gamma ** i)
+                    discounted_reward += self.n_step_buffers[env_idx][i][3] * (
+                        self.gamma**i
+                    )
                     if self.n_step_buffers[env_idx][i][4]:  # If done, break early
                         break
 
@@ -41,7 +69,7 @@ class MultiStepReplayBuffer(ReplayBuffer):
                     np.expand_dims(action_, axis=0),
                     np.expand_dims(discounted_reward, axis=0),
                     np.expand_dims(done[env_idx], axis=0),
-                    []  # [infos[env_idx]]
+                    [],  # [infos[env_idx]]
                 )
 
                 self.n_step_buffers[env_idx].pop(0)
@@ -51,12 +79,33 @@ class MultiStepReplayBuffer(ReplayBuffer):
 
 
 class PrioritizedMultiStepReplayBuffer(ReplayBuffer):
-    def __init__(self, buffer_size, observation_space, action_space, device, optimize_memory_usage=False,
-                 handle_timeout_termination=False, n_envs=1, n_steps=3, gamma=0.99, alpha=0.6, beta=0.4,
-                 beta_increment_per_sampling=0.001):
-        assert not optimize_memory_usage, "Memory optimization is not supported for multi-step replay buffers"
-        super(PrioritizedMultiStepReplayBuffer, self).__init__(buffer_size, observation_space, action_space, device, 1,
-                                                               optimize_memory_usage, handle_timeout_termination)
+    def __init__(
+        self,
+        buffer_size,
+        observation_space,
+        action_space,
+        device,
+        optimize_memory_usage=False,
+        handle_timeout_termination=False,
+        n_envs=1,
+        n_steps=3,
+        gamma=0.99,
+        alpha=0.6,
+        beta=0.4,
+        beta_increment_per_sampling=0.001,
+    ):
+        assert (
+            not optimize_memory_usage
+        ), "Memory optimization is not supported for multi-step replay buffers"
+        super(PrioritizedMultiStepReplayBuffer, self).__init__(
+            buffer_size,
+            observation_space,
+            action_space,
+            device,
+            1,
+            optimize_memory_usage,
+            handle_timeout_termination,
+        )
         self.n_envs_ = n_envs
         self.n_steps = n_steps
         self.gamma = gamma
@@ -78,12 +127,21 @@ class PrioritizedMultiStepReplayBuffer(ReplayBuffer):
     def add(self, obs, next_obs, action, reward, done, infos):
         for env_idx in range(self.n_envs_):
             self.n_step_buffers[env_idx].append(
-                (obs[env_idx], next_obs[env_idx], action[env_idx], reward[env_idx], done[env_idx]))
+                (
+                    obs[env_idx],
+                    next_obs[env_idx],
+                    action[env_idx],
+                    reward[env_idx],
+                    done[env_idx],
+                )
+            )
 
             if len(self.n_step_buffers[env_idx]) >= self.n_steps or done[env_idx]:
                 discounted_reward = 0
                 for i in range(len(self.n_step_buffers[env_idx])):
-                    discounted_reward += self.n_step_buffers[env_idx][i][3] * (self.gamma ** i)
+                    discounted_reward += self.n_step_buffers[env_idx][i][3] * (
+                        self.gamma**i
+                    )
                     if self.n_step_buffers[env_idx][i][4]:  # If done, break early
                         break
 
@@ -96,11 +154,11 @@ class PrioritizedMultiStepReplayBuffer(ReplayBuffer):
                     np.expand_dims(action_, axis=0),
                     np.expand_dims(discounted_reward, axis=0),
                     np.expand_dims(done[env_idx], axis=0),
-                    []  # [infos[env_idx]]
+                    [],  # [infos[env_idx]]
                 )
                 idx = self.pos - 1
-                self.sum_tree[idx] = self.max_priority ** self.alpha
-                self.min_tree[idx] = self.max_priority ** self.alpha
+                self.sum_tree[idx] = self.max_priority**self.alpha
+                self.min_tree[idx] = self.max_priority**self.alpha
 
                 self.n_step_buffers[env_idx].pop(0)
 
@@ -120,8 +178,19 @@ class PrioritizedMultiStepReplayBuffer(ReplayBuffer):
 
         self.beta = min(1.0, self.beta + self.beta_increment_per_sampling)
 
-        obs, actions, rewards, next_obs, dones, infos = super(PrioritizedMultiStepReplayBuffer, self).sample(batch_size)
-        return obs, actions, rewards, next_obs, dones, infos, indices, torch.tensor(weights, device=self.device)
+        obs, actions, rewards, next_obs, dones, infos = super(
+            PrioritizedMultiStepReplayBuffer, self
+        ).sample(batch_size)
+        return (
+            obs,
+            actions,
+            rewards,
+            next_obs,
+            dones,
+            infos,
+            indices,
+            torch.tensor(weights, device=self.device),
+        )
 
     def _sample_proportional(self, batch_size):
         indices = []
@@ -143,7 +212,7 @@ class PrioritizedMultiStepReplayBuffer(ReplayBuffer):
             assert priority >= 0
             assert 0 <= idx < self.size()
 
-            priority = priority ** self.alpha + self.epsilon
+            priority = priority**self.alpha + self.epsilon
             self.sum_tree[idx] = priority
             self.min_tree[idx] = priority
 
@@ -151,14 +220,33 @@ class PrioritizedMultiStepReplayBuffer(ReplayBuffer):
 
 
 class SimplifiedPrioritizedMultiStepReplayBuffer(ReplayBuffer):
-    def __init__(self, buffer_size, observation_space, action_space, device, optimize_memory_usage=False,
-                 handle_timeout_termination=False, n_envs=1, n_steps=3, gamma=0.99, alpha=0.5, beta=0.5,
-                 beta_increment_per_sampling=0):
-        assert not optimize_memory_usage, "Memory optimization is not supported for multi-step replay buffers"
-        super(SimplifiedPrioritizedMultiStepReplayBuffer, self).__init__(buffer_size, observation_space, action_space,
-                                                                         device, 1,
-                                                                         optimize_memory_usage,
-                                                                         handle_timeout_termination)
+    def __init__(
+        self,
+        buffer_size,
+        observation_space,
+        action_space,
+        device,
+        optimize_memory_usage=False,
+        handle_timeout_termination=False,
+        n_envs=1,
+        n_steps=3,
+        gamma=0.99,
+        alpha=0.5,
+        beta=0.5,
+        beta_increment_per_sampling=0,
+    ):
+        assert (
+            not optimize_memory_usage
+        ), "Memory optimization is not supported for multi-step replay buffers"
+        super(SimplifiedPrioritizedMultiStepReplayBuffer, self).__init__(
+            buffer_size,
+            observation_space,
+            action_space,
+            device,
+            1,
+            optimize_memory_usage,
+            handle_timeout_termination,
+        )
         self.n_envs_ = n_envs
         self.n_steps = n_steps
         self.gamma = gamma
@@ -180,12 +268,21 @@ class SimplifiedPrioritizedMultiStepReplayBuffer(ReplayBuffer):
     def add(self, obs, next_obs, action, reward, done, infos):
         for env_idx in range(self.n_envs_):
             self.n_step_buffers[env_idx].append(
-                (obs[env_idx], next_obs[env_idx], action[env_idx], reward[env_idx], done[env_idx]))
+                (
+                    obs[env_idx],
+                    next_obs[env_idx],
+                    action[env_idx],
+                    reward[env_idx],
+                    done[env_idx],
+                )
+            )
 
             if len(self.n_step_buffers[env_idx]) >= self.n_steps or done[env_idx]:
                 discounted_reward = 0
                 for i in range(len(self.n_step_buffers[env_idx])):
-                    discounted_reward += self.n_step_buffers[env_idx][i][3] * (self.gamma ** i)
+                    discounted_reward += self.n_step_buffers[env_idx][i][3] * (
+                        self.gamma**i
+                    )
                     if self.n_step_buffers[env_idx][i][4]:  # If done, break early
                         break
 
@@ -193,16 +290,11 @@ class SimplifiedPrioritizedMultiStepReplayBuffer(ReplayBuffer):
 
                 # Add transition with maximum priority
                 super(SimplifiedPrioritizedMultiStepReplayBuffer, self).add(
-                    obs_,
-                    next_obs_,
-                    action_,
-                    discounted_reward,
-                    done[env_idx],
-                    []
+                    obs_, next_obs_, action_, discounted_reward, done[env_idx], []
                 )
                 idx = (self.pos - 1) % self.buffer_size
 
-                priority = self.max_priority ** self.alpha + self.epsilon
+                priority = self.max_priority**self.alpha + self.epsilon
                 self.sum_tree[idx] = priority
                 self.min_tree[idx] = priority
 
@@ -224,16 +316,24 @@ class SimplifiedPrioritizedMultiStepReplayBuffer(ReplayBuffer):
 
         self.beta = min(1.0, self.beta + self.beta_increment_per_sampling)
 
-        data = super(SimplifiedPrioritizedMultiStepReplayBuffer, self)._get_samples(indices)
-        return data, indices, torch.tensor(weights, device=self.device, requires_grad=False)
+        data = super(SimplifiedPrioritizedMultiStepReplayBuffer, self)._get_samples(
+            indices
+        )
+        return (
+            data,
+            indices,
+            torch.tensor(weights, device=self.device, requires_grad=False),
+        )
 
     def update_priorities(self, indices, priorities):
 
         assert len(indices) == len(priorities)
         assert np.all(priorities >= 0)
-        assert np.all((0 <= np.array(indices)) & np.all(np.array(indices) < self.size()))
+        assert np.all(
+            (0 <= np.array(indices)) & np.all(np.array(indices) < self.size())
+        )
 
-        priorities = priorities ** self.alpha + self.epsilon
+        priorities = priorities**self.alpha + self.epsilon
 
         for idx, priority in zip(indices, priorities):
             self.sum_tree[idx] = priority
@@ -275,7 +375,7 @@ from typing import Callable
 
 
 class SegmentTree:
-    """ Create SegmentTree.
+    """Create SegmentTree.
 
     Taken from OpenAI baselines github repository:
     https://github.com/openai/baselines/blob/master/baselines/common/segment_tree.py
@@ -297,14 +397,14 @@ class SegmentTree:
 
         """
         assert (
-                capacity > 0 and capacity & (capacity - 1) == 0
+            capacity > 0 and capacity & (capacity - 1) == 0
         ), "capacity must be positive and a power of 2."
         self.capacity = capacity
         self.tree = [init_value for _ in range(2 * capacity)]
         self.operation = operation
 
     def _operate_helper(
-            self, start: int, end: int, node: int, node_start: int, node_end: int
+        self, start: int, end: int, node: int, node_start: int, node_end: int
     ) -> float:
         """Returns result of operation in segment."""
         if start == node_start and end == node_end:
@@ -347,7 +447,7 @@ class SegmentTree:
 
 
 class SumSegmentTree(SegmentTree):
-    """ Create SumSegmentTree.
+    """Create SumSegmentTree.
 
     Taken from OpenAI baselines github repository:
     https://github.com/openai/baselines/blob/master/baselines/common/segment_tree.py
@@ -388,7 +488,7 @@ class SumSegmentTree(SegmentTree):
 
 
 class MinSegmentTree(SegmentTree):
-    """ Create SegmentTree.
+    """Create SegmentTree.
 
     Taken from OpenAI baselines github repository:
     https://github.com/openai/baselines/blob/master/baselines/common/segment_tree.py

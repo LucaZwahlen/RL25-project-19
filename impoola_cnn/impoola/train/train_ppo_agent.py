@@ -1,34 +1,53 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_atari_envpoolpy
 import time
-from collections import deque
 
 import numpy as np
 import torch
 import torch.nn as nn
 from tqdm import trange
 
-from impoola_cnn.impoola.utils.DRAC import DRACTransformChaserFruitbot, remap_logprobs_for_flip
-from impoola_cnn.impoola.utils.csv_logging import (EpisodeQueueCalculator,
-                                                   Logger)
-from impoola_cnn.impoola.utils.evaluate_test_performance import \
-    evaluate_test_performance
+from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator, Logger
+from impoola_cnn.impoola.utils.DRAC import (
+    DRACTransformChaserFruitbot,
+    remap_logprobs_for_flip,
+)
+from impoola_cnn.impoola.utils.evaluate_test_performance import (
+    evaluate_test_performance,
+)
 
 
 def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
-    """ Train the PPO agent """
+    """Train the PPO agent"""
 
     # Track training episode statistics
-    episodeQueueCalculator = EpisodeQueueCalculator('all-knowing' if args.is_all_knowing else 'train', args.seed, args.normalize_reward,
-                                                    100, args.env_id, args.num_envs, args.distribution_mode, device)
+    episodeQueueCalculator = EpisodeQueueCalculator(
+        "all-knowing" if args.is_all_knowing else "train",
+        args.seed,
+        args.normalize_reward,
+        100,
+        args.env_id,
+        args.num_envs,
+        args.distribution_mode,
+        device,
+    )
 
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape, device=device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape, device=device)
+    obs = torch.zeros(
+        (args.num_steps, args.num_envs) + envs.single_observation_space.shape,
+        device=device,
+    )
+    actions = torch.zeros(
+        (args.num_steps, args.num_envs) + envs.single_action_space.shape, device=device
+    )
     logprobs = torch.zeros((args.num_steps, args.num_envs), device=device)
     rewards = torch.zeros((args.num_steps, args.num_envs), device=device)
-    dones = torch.zeros((args.num_steps, args.num_envs), device=device, dtype=torch.bool)
+    dones = torch.zeros(
+        (args.num_steps, args.num_envs), device=device, dtype=torch.bool
+    )
     values = torch.zeros((args.num_steps, args.num_envs), device=device)
-    logits = torch.zeros((args.num_steps, args.num_envs, envs.single_action_space.n), device=device)
+    logits = torch.zeros(
+        (args.num_steps, args.num_envs, envs.single_action_space.n), device=device
+    )
 
     gamma = torch.tensor(args.gamma, device=device)
     gae_lambda = torch.tensor(args.gae_lambda, device=device)
@@ -69,14 +88,18 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, pi_logits = agent.get_action_and_value(next_obs)
+                action, logprob, _, value, pi_logits = agent.get_action_and_value(
+                    next_obs
+                )
                 values[step] = value.flatten()
                 logits[step] = pi_logits
             actions[step] = action
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminated, truncated, info = envs.step(action.cpu().numpy())
+            next_obs, reward, terminated, truncated, info = envs.step(
+                action.cpu().numpy()
+            )
             next_done = np.logical_or(terminated, truncated)
 
             rewards[step] = torch.tensor(reward, device=device).view(-1)
@@ -95,8 +118,18 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
         b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_values = values.reshape(-1)
 
-        advantages, returns = ppo_gae(agent, next_done, next_obs, rewards, dones, values, gamma, gae_lambda, device,
-                                      args.num_steps)
+        advantages, returns = ppo_gae(
+            agent,
+            next_done,
+            next_obs,
+            rewards,
+            dones,
+            values,
+            gamma,
+            gae_lambda,
+            device,
+            args.num_steps,
+        )
 
         advantages = advantages.clone()
         returns = returns.clone()
@@ -124,11 +157,17 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                 loss, pg_loss, v_loss, entropy_loss, logratio, ratio = ppo_loss(
                     agent,
                     b_obs[mb_inds],
-                    b_logprobs[mb_inds], b_actions[mb_inds],
-                    b_values[mb_inds], b_returns[mb_inds],
+                    b_logprobs[mb_inds],
+                    b_actions[mb_inds],
+                    b_values[mb_inds],
+                    b_returns[mb_inds],
                     b_advantages[mb_inds],
                     b_advantages[mb_inds],
-                    norm_adv, clip_coef, ent_coef, vf_coef, clip_vloss
+                    norm_adv,
+                    clip_coef,
+                    ent_coef,
+                    vf_coef,
+                    clip_vloss,
                 )
 
                 if args.drac_lambda > 0.0:
@@ -136,20 +175,28 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                     logits_full = target_logits_flat[mb_inds]
                     val_full = target_values_flat[mb_inds]
 
-                    obs_t = drac_transform(b_obs[mb_inds].reshape(len(mb_inds), *envs.single_observation_space.shape))
+                    obs_t = drac_transform(
+                        b_obs[mb_inds].reshape(
+                            len(mb_inds), *envs.single_observation_space.shape
+                        )
+                    )
                     pi_t, values_t = agent.get_pi_and_value(obs_t)
                     values_t = values_t.squeeze(-1) if values_t.ndim > 1 else values_t
 
                     drac_value_loss = (val_full.detach() - values_t).pow(2).mean()
 
                     dist_clean = torch.distributions.Categorical(logits=logits_full)
-                    dist_flip = torch.distributions.Categorical(logits=pi_t.logits if hasattr(pi_t, "logits") else pi_t)
+                    dist_flip = torch.distributions.Categorical(
+                        logits=pi_t.logits if hasattr(pi_t, "logits") else pi_t
+                    )
 
                     logp_clean = dist_clean.log_prob(flat_actions)
                     logp_flip = remap_logprobs_for_flip(dist_flip, flat_actions)
 
                     drac_policy_loss = (logp_clean.detach() - logp_flip).pow(2).mean()
-                    loss = loss + args.drac_lambda * (drac_value_loss + drac_policy_loss)
+                    loss = loss + args.drac_lambda * (
+                        drac_value_loss + drac_policy_loss
+                    )
 
                 total_policy_loss += pg_loss.item()
                 total_value_loss += v_loss.item()
@@ -167,22 +214,55 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
 
-        eval_interval = max(1, args.num_iterations // args.n_datapoints_csv) if args.n_datapoints_csv else 1
-        do_eval = args.num_iterations == 0 or (iteration % eval_interval == 0) or (iteration == args.num_iterations)
+        eval_interval = (
+            max(1, args.num_iterations // args.n_datapoints_csv)
+            if args.n_datapoints_csv
+            else 1
+        )
+        do_eval = (
+            args.num_iterations == 0
+            or (iteration % eval_interval == 0)
+            or (iteration == args.num_iterations)
+        )
         if do_eval:
             avg_policy_loss = total_policy_loss / n_updates
             avg_value_loss = total_value_loss / n_updates
             avg_entropy_loss = total_entropy_loss / n_updates
 
             iteration_end_time = time.time()
-            cumulative_training_time += (iteration_end_time - iteration_start_time)
+            cumulative_training_time += iteration_end_time - iteration_start_time
 
             simple, detailed = evaluate_test_performance(agent, args, device)
 
-            test_mean_reward, test_median_reward, test_ticks, test_steps, test_success, test_spl, test_levels, test_count = simple
-            test_rewards, test_num_ticks, test_num_steps, test_is_success, test_spl_terms, _ = detailed
+            (
+                test_mean_reward,
+                test_median_reward,
+                test_ticks,
+                test_steps,
+                test_success,
+                test_spl,
+                test_levels,
+                test_count,
+            ) = simple
+            (
+                test_rewards,
+                test_num_ticks,
+                test_num_steps,
+                test_is_success,
+                test_spl_terms,
+                _,
+            ) = detailed
 
-            train_mean_reward, train_median_reward, train_ticks, train_steps, train_success, train_spl, train_levels, train_count = episodeQueueCalculator.get_statistics()
+            (
+                train_mean_reward,
+                train_median_reward,
+                train_ticks,
+                train_steps,
+                train_success,
+                train_spl,
+                train_levels,
+                train_count,
+            ) = episodeQueueCalculator.get_statistics()
 
             logger.log(
                 avg_policy_loss,
@@ -206,11 +286,18 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                 train_spl,
                 iteration,
                 global_step,
-                cumulative_training_time
+                cumulative_training_time,
             )
 
             if args.extensive_logging:
-                train_rewards, train_num_ticks, train_num_steps, train_is_success, train_spl_terms, _ = episodeQueueCalculator.get_raw_counts()
+                (
+                    train_rewards,
+                    train_num_ticks,
+                    train_num_steps,
+                    train_is_success,
+                    train_spl_terms,
+                    _,
+                ) = episodeQueueCalculator.get_raw_counts()
 
                 logger.log_extensive(
                     avg_policy_loss,
@@ -228,7 +315,7 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                     train_spl_terms,
                     iteration,
                     global_step,
-                    cumulative_training_time
+                    cumulative_training_time,
                 )
 
             iteration_start_time = time.time()

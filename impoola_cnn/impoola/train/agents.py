@@ -6,13 +6,16 @@ from impoola_cnn.impoola.train.nn import encoder_factory, layer_init_orthogonal
 
 class DQNAgent(nn.Module):
     def __init__(
-            self,
-            encoder_type,
-            envs,
-            width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
-            use_layer_init_normed=False,
-            p_augment=0.0,
-            micro_dropout_p=0.0
+        self,
+        encoder_type,
+        envs,
+        width_scale=1,
+        out_features=256,
+        cnn_filters=(16, 32, 32),
+        activation="relu",
+        use_layer_init_normed=False,
+        p_augment=0.0,
+        micro_dropout_p=0.0,
     ):
         super().__init__()
 
@@ -26,12 +29,14 @@ class DQNAgent(nn.Module):
             activation=activation,
             use_layer_init_normed=use_layer_init_normed,
             p_augment=p_augment,
-            micro_dropout_p=micro_dropout_p
+            micro_dropout_p=micro_dropout_p,
         )
         self.encoder = encoder
         self.out_features = out_features
 
-        self.value = layer_init_orthogonal(nn.Linear(out_features, envs.single_action_space.n), std=0.01)
+        self.value = layer_init_orthogonal(
+            nn.Linear(out_features, envs.single_action_space.n), std=0.01
+        )
 
     def forward(self, x):
         return self.value(self.encoder(x))
@@ -46,13 +51,16 @@ class DQNAgent(nn.Module):
 
 class ActorCriticAgent(nn.Module):
     def __init__(
-            self,
-            encoder_type,
-            envs,
-            width_scale=1, out_features=256, cnn_filters=(16, 32, 32), activation='relu',
-            use_layer_init_normed=False,
-            p_augment=0.0,
-            micro_dropout_p=0.0
+        self,
+        encoder_type,
+        envs,
+        width_scale=1,
+        out_features=256,
+        cnn_filters=(16, 32, 32),
+        activation="relu",
+        use_layer_init_normed=False,
+        p_augment=0.0,
+        micro_dropout_p=0.0,
     ):
         super().__init__()
 
@@ -66,7 +74,7 @@ class ActorCriticAgent(nn.Module):
             activation=activation,
             use_layer_init_normed=use_layer_init_normed,
             p_augment=p_augment,
-            micro_dropout_p=micro_dropout_p
+            micro_dropout_p=micro_dropout_p,
         )
         self.encoder = encoder
         self.out_features = out_features
@@ -124,6 +132,7 @@ class Vtrace(ActorCriticAgent):
         logits, value = self.forward(x)
         return Categorical(logits=logits), value
 
+
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
@@ -167,9 +176,9 @@ class GRPOAgentflavoured(ActorCriticAgent):
         logits = torch.nan_to_num(logits, nan=0.0, neginf=0.0, posinf=0.0)
         return Categorical(logits=logits), value
 
-import torch
+
 import torch.nn as nn
-from torch.distributions import Categorical
+
 
 class GRPOAgent(nn.Module):
     def __init__(
@@ -179,13 +188,13 @@ class GRPOAgent(nn.Module):
         width_scale=1,
         out_features=256,
         cnn_filters=(16, 32, 32),
-        activation='relu',
+        activation="relu",
         use_layer_init_normed=False,
         p_augment=0.0,
-        micro_dropout_p=0.0
+        micro_dropout_p=0.0,
     ):
         super().__init__()
-        
+
         encoder, out_features = encoder_factory(
             encoder_type=encoder_type,
             envs=envs,
@@ -195,12 +204,11 @@ class GRPOAgent(nn.Module):
             activation=activation,
             use_layer_init_normed=use_layer_init_normed,
             p_augment=p_augment,
-            micro_dropout_p=micro_dropout_p
+            micro_dropout_p=micro_dropout_p,
         )
         self.encoder = encoder
         self.action_head = layer_init_orthogonal(
-            nn.Linear(out_features, envs.single_action_space.n), 
-            std=0.01
+            nn.Linear(out_features, envs.single_action_space.n), std=0.01
         )
 
     def forward(self, x):

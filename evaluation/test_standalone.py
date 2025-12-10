@@ -10,7 +10,7 @@ from sit.baselines.common.vec_env.vec_monitor import VecMonitor
 from sit.ucb_rl2_meta.algo.drac import DrAC
 
 # Fix for numpy deprecations
-if not hasattr(np, 'bool'):
+if not hasattr(np, "bool"):
     np.bool = bool
     np.int = int
     np.float = float
@@ -54,14 +54,12 @@ class SitActor(GenericActor):
         self.actor_critic.eval()
         self.device = device
         self.recurrent_hidden_states = torch.zeros(
-            1, actor_critic.recurrent_hidden_state_size, device=device)
+            1, actor_critic.recurrent_hidden_state_size, device=device
+        )
 
     def act(self, obs, eval_masks):
         _, action, _, rec_hidden = self.actor_critic.act(
-            obs,
-            self.recurrent_hidden_states,
-            eval_masks,
-            deterministic=False
+            obs, self.recurrent_hidden_states, eval_masks, deterministic=False
         )
         self.recurrent_hidden_states = rec_hidden
         return action
@@ -77,19 +75,30 @@ class ImpoolaPPOActor(GenericActor):
     def act(self, obs, eval_masks):
         with torch.no_grad():
             obs = obs * 255  # we dont need normalization for impoola
-            action, _, _, _, _ = self.ppo_agent.get_action_and_value(obs)  # Remove deterministic parameter
+            action, _, _, _, _ = self.ppo_agent.get_action_and_value(
+                obs
+            )  # Remove deterministic parameter
 
         return action
 
 
-def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_id=None):
+def render(
+    args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_id=None
+):
     # Sample Levels From the Full Distribution
-    venv = ProcgenEnv(num_envs=1, env_name=args.env_name,
-                      num_levels=config['num_levels'], start_level=config['start_level'], rand_seed=config['seed'],
-                      distribution_mode=args.distribution_mode)  # Remove render_mode
+    venv = ProcgenEnv(
+        num_envs=1,
+        env_name=args.env_name,
+        num_levels=config["num_levels"],
+        start_level=config["start_level"],
+        rand_seed=config["seed"],
+        distribution_mode=args.distribution_mode,
+    )  # Remove render_mode
     venv = VecExtractDictObs(venv, "rgb")
     venv = VecMonitor(venv=venv, filename=None, keep_buf=100)
-    venv = VecNormalize(venv=venv, ob=False, ret=False)  # Remove reward normalization for rendering
+    venv = VecNormalize(
+        venv=venv, ob=False, ret=False
+    )  # Remove reward normalization for rendering
     eval_envs = VecPyTorchProcgen(venv, device)
 
     obs = eval_envs.reset()
@@ -97,7 +106,7 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
     eval_masks = torch.ones(1, 1, device=device)
 
     # Setup rendering with matplotlib if requested
-    canvas['axis'].set_title(f"Playing {args.env_name} - Reward: 0")
+    canvas["axis"].set_title(f"Playing {args.env_name} - Reward: 0")
 
     envs_done = 0
     curr_env_reward = 0.0
@@ -118,17 +127,20 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
         # Normalize to 0-1 range for display
         rgb_frame = (rgb_frame - rgb_frame.min()) / (rgb_frame.max() - rgb_frame.min())
 
-        canvas['img_plot'].set_array(rgb_frame)
-        canvas['axis'].set_title(f"Playing {args.env_name} - Reward: {curr_env_reward:.1f}")
+        canvas["img_plot"].set_array(rgb_frame)
+        canvas["axis"].set_title(
+            f"Playing {args.env_name} - Reward: {curr_env_reward:.1f}"
+        )
 
-        plt.pause(1 / config['speed'])  # Slow down for viewing
+        plt.pause(1 / config["speed"])  # Slow down for viewing
 
         eval_masks = torch.tensor(
             [[0.0] if done_ else [1.0] for done_ in done],
             dtype=torch.float32,
-            device=device)
+            device=device,
+        )
         for info in infos:
-            if 'episode' in info.keys():
+            if "episode" in info.keys():
                 print(f"Episode finished with reward: {info['episode']['r']:.1f}")
                 envs_done += 1
                 curr_env_reward = 0.0
@@ -136,11 +148,13 @@ def render(args, actor, device, config: RenderConfig, canvas: RenderCanvas, aug_
     eval_envs.close()
 
 
-def load_sit_checkpoint(checkpoint_path: str, device: torch.device, args, shape=(3, 64, 64), action_space=15) -> DrAC:
+def load_sit_checkpoint(
+    checkpoint_path: str, device: torch.device, args, shape=(3, 64, 64), action_space=15
+) -> DrAC:
     print(f"Loading checkpoint from {checkpoint_path}")
     # Load checkpoint
     if not os.path.exists(checkpoint_path):
-        print(f"Checkpoint not found.")
+        print("Checkpoint not found.")
         sys.exit(1)
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -151,7 +165,8 @@ def load_sit_checkpoint(checkpoint_path: str, device: torch.device, args, shape=
         device,
         hidden_size=args.hidden_size,
         choice=args.choice,
-        base_kwargs={'recurrent': False})
+        base_kwargs={"recurrent": False},
+    )
 
     actor_critic.to(device)
 
@@ -171,44 +186,51 @@ def load_sit_checkpoint(checkpoint_path: str, device: torch.device, args, shape=
         aug_func=aug_list,
         aug_type=args.aug_choice,
         aug_coef=args.aug_coef,
-        env_name=args.env_name)
+        env_name=args.env_name,
+    )
 
     # Load weights exactly like train2.py does it
-    agent.actor_critic.load_state_dict(checkpoint['model_state_dict'])
-    agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    agent.actor_critic.load_state_dict(checkpoint["model_state_dict"])
+    agent.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
     print(f"Loaded SIT model from epoch {checkpoint.get('epoch', 'unknown')}")
 
     return agent
 
 
-def load_impoola_ppo_checkpoint(checkpoint_path: str, device: torch.device, shape=(3, 64, 64),
-                                action_space=15) -> PPOAgent:
+def load_impoola_ppo_checkpoint(
+    checkpoint_path: str, device: torch.device, shape=(3, 64, 64), action_space=15
+) -> PPOAgent:
     print(f"Loading checkpoint from {checkpoint_path}")
     # Load checkpoint
     if not os.path.exists(checkpoint_path):
-        print(f"Checkpoint not found.")
+        print("Checkpoint not found.")
         sys.exit(1)
 
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     # convert args from dict to namespace
-    args_dict = checkpoint['args']
+    args_dict = checkpoint["args"]
     args = argparse.Namespace(**args_dict)
 
-    envs = make_procgen_env(args, rand_seed=args.seed,
-                            normalize_reward=args.normalize_reward,
-                            full_distribution=False)
+    envs = make_procgen_env(
+        args,
+        rand_seed=args.seed,
+        normalize_reward=args.normalize_reward,
+        full_distribution=False,
+    )
     print(args)
     agent = PPOAgent(
         encoder_type=args.encoder_type,
         envs=envs,
-        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
+        width_scale=args.scale,
+        out_features=args.latent_space_dim,
+        cnn_filters=args.cnn_filters,
         activation=args.activation,
-        use_layer_init_normed=False
+        use_layer_init_normed=False,
     ).to(device)
 
     # Load weights exactly like train2.py does it
-    agent.load_state_dict(checkpoint['agent_state_dict'])
+    agent.load_state_dict(checkpoint["agent_state_dict"])
 
     print(f"Loaded IMPOOLA model from step {checkpoint.get('step', 'unknown')}")
 
@@ -223,30 +245,46 @@ if __name__ == "__main__":
     # Add the train2.py arguments by importing them
     sys.path.append(os.path.dirname(__file__))
     import sit.data_augs
-    from sit.train2 import \
-        parser  # This gets the parser with all train2.py arguments
+    from sit.train2 import parser  # This gets the parser with all train2.py arguments
     from sit.ucb_rl2_meta.model import Policy_Sit
 
     # Add test-specific arguments
-    parser.add_argument('--checkpoint', type=str, required=True, help='Path to checkpoint file')
-    parser.add_argument('--type', type=str, required=True, choices=['sit', 'impoola'], help='Type of agent to load')
+    parser.add_argument(
+        "--checkpoint", type=str, required=True, help="Path to checkpoint file"
+    )
+    parser.add_argument(
+        "--type",
+        type=str,
+        required=True,
+        choices=["sit", "impoola"],
+        help="Type of agent to load",
+    )
 
     args = parser.parse_args()
 
     # Set device same as train2.py
-    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
+    device = torch.device(
+        "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"
+    )
 
     # Load the trained agent
-    agent = load_impoola_ppo_checkpoint(args.checkpoint, device) if args.type == 'impoola' else load_sit_checkpoint(
-        args.checkpoint, device, args)
-    actor = ImpoolaPPOActor(agent, device) if args.type == 'impoola' else SitActor(agent.actor_critic, device)
+    agent = (
+        load_impoola_ppo_checkpoint(args.checkpoint, device)
+        if args.type == "impoola"
+        else load_sit_checkpoint(args.checkpoint, device, args)
+    )
+    actor = (
+        ImpoolaPPOActor(agent, device)
+        if args.type == "impoola"
+        else SitActor(agent.actor_critic, device)
+    )
     aug_id = sit.data_augs.Identity
 
     render_config: RenderConfig = {
-        'num_levels': 0,
-        'start_level': 0,
-        'seed': 42,
-        'speed': 50,
+        "num_levels": 0,
+        "start_level": 0,
+        "seed": 42,
+        "speed": 50,
     }
 
     # plot
@@ -254,9 +292,9 @@ if __name__ == "__main__":
     fig, ax = plt.subplots()
 
     canvas_config: RenderCanvas = {
-        'plt': plt,
-        'axis': ax,
-        'img_plot': ax.imshow(np.zeros((64, 64, 3))),
+        "plt": plt,
+        "axis": ax,
+        "img_plot": ax.imshow(np.zeros((64, 64, 3))),
     }
 
     render(args, actor, device, render_config, canvas_config, aug_id=aug_id)

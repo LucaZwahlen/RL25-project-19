@@ -1,21 +1,17 @@
 import argparse
 from abc import ABC, abstractmethod
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from tqdm import tqdm
 
 from impoola_cnn.impoola.train.agents import PPOAgent
-from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator
 from impoola_cnn.impoola.utils.environment_knowledge import TEST_ENV_RANGE
 from impoola_cnn.impoola.utils.noop_indices import get_noop_indices
 from impoola_cnn.impoola.utils.success_rewards import get_success_reward
-from sit.baselines.common.vec_env.vec_monitor import VecMonitor
-from sit.ucb_rl2_meta.algo.drac import DrAC
 
 # Fix for numpy deprecations
-if not hasattr(np, 'bool'):
+if not hasattr(np, "bool"):
     np.bool = bool
     np.int = int
     np.float = float
@@ -23,14 +19,8 @@ if not hasattr(np, 'bool'):
     np.object = object
     np.unicode = str
 
-from typing import TypedDict
-
-from procgen import ProcgenEnv
 
 from impoola_cnn.impoola.maker.make_env import make_procgen_env
-from sit.baselines.common.vec_env.vec_normalize import VecNormalize
-from sit.baselines.common.vec_env.vec_remove_dict_obs import VecExtractDictObs
-from sit.ucb_rl2_meta.envs import VecPyTorchProcgen
 
 
 class SingleLevelVectorEnv:
@@ -39,7 +29,14 @@ class SingleLevelVectorEnv:
     Drop-in replacement for your existing envs.step() interface.
     """
 
-    def __init__(self, target_levels, env_id, distribution_mode="easy", seed=1, normalize_reward=False):
+    def __init__(
+        self,
+        target_levels,
+        env_id,
+        distribution_mode="easy",
+        seed=1,
+        normalize_reward=False,
+    ):
         """
         Args:
             target_levels: List of level IDs to create environments for (length should be 64)
@@ -72,7 +69,7 @@ class SingleLevelVectorEnv:
                 render=False,
                 distribution_mode=distribution_mode,
                 num_levels_override=1,
-                start_level_override=level_id
+                start_level_override=level_id,
             )
             self.envs.append(single_env)
 
@@ -83,7 +80,9 @@ class SingleLevelVectorEnv:
 
         # Track episode completion info
         self._episode_info = {}
-        self._current_level_seeds = np.array(target_levels)  # Track which level each env is on
+        self._current_level_seeds = np.array(
+            target_levels
+        )  # Track which level each env is on
 
     def reset(self):
         """Reset all environments and return stacked observations"""
@@ -139,16 +138,16 @@ class SingleLevelVectorEnv:
             truncated_list.append(truncated[0])
 
             # combine the info dicts from the list of infos into one dict
-            prev_level_seeds[i] = info['prev_level_seed'][0]
-            level_seeds[i] = info['level_seed'][0]
-            prev_level_complete[i] = info['prev_level_complete'][0]
+            prev_level_seeds[i] = info["prev_level_seed"][0]
+            level_seeds[i] = info["level_seed"][0]
+            prev_level_complete[i] = info["prev_level_complete"][0]
 
-            if 'episode' in info:
-                episode_r[i] = info['episode']['r'][0]
-                episode_l[i] = info['episode']['l'][0]
-                episode_t[i] = info['episode']['t'][0]
-            if '_episode' in info:
-                episode_done[i] = info['_episode'][0]
+            if "episode" in info:
+                episode_r[i] = info["episode"]["r"][0]
+                episode_l[i] = info["episode"]["l"][0]
+                episode_t[i] = info["episode"]["t"][0]
+            if "_episode" in info:
+                episode_done[i] = info["_episode"][0]
 
         # Stack results
         # from list [3, 64, 64] to [64, 3, 64, 64]
@@ -211,7 +210,9 @@ class ImpoolaPPOActor(GenericActor):
 
     def act(self, obs):
         with torch.no_grad():
-            action, _, _, _, _ = self.ppo_agent.get_action_and_value(obs)  # Remove deterministic parameter
+            action, _, _, _, _ = self.ppo_agent.get_action_and_value(
+                obs
+            )  # Remove deterministic parameter
 
         return action
 
@@ -240,7 +241,9 @@ def eval(actor, device):
 
     # progress bar
     pbar = tqdm(total=TEST_ENV_RANGE, desc="Evaluating on all-knowing path")
-    env_level_ids = np.zeros(TEST_ENV_RANGE * 5, dtype=np.int32)  # just make it large so we dont run out of space lol
+    env_level_ids = np.zeros(
+        TEST_ENV_RANGE * 5, dtype=np.int32
+    )  # just make it large so we dont run out of space lol
     envs_done = 0
 
     for batch_levels in create_batch_iterator(TEST_ENV_RANGE, batch_size):
@@ -250,7 +253,7 @@ def eval(actor, device):
             env_id=ENV_ID,
             distribution_mode=DISTRIBUTION_MODE,
             seed=SEED,
-            normalize_reward=False
+            normalize_reward=False,
         )
 
         obs, _ = envs.reset()
@@ -278,15 +281,25 @@ def eval(actor, device):
             steps += action_op_mask
             success = success | (rewards >= success_reward - 0.25)
 
-            batch_done = batch_done | torch.tensor(np.logical_or(terminated, truncated), device=device)
+            batch_done = batch_done | torch.tensor(
+                np.logical_or(terminated, truncated), device=device
+            )
 
             if "_episode" in info.keys():
                 done_mask = info["_episode"]
-                completed_levels_prev_seeds = np.array(info['prev_level_seed'])[done_mask]
+                completed_levels_prev_seeds = np.array(info["prev_level_seed"])[
+                    done_mask
+                ]
 
-                path_lengts[completed_levels_prev_seeds] = steps[done_mask].cpu().numpy()
-                tick_lengts[completed_levels_prev_seeds] = ticks[done_mask].cpu().numpy()
-                successes[completed_levels_prev_seeds] = success[done_mask].cpu().numpy()
+                path_lengts[completed_levels_prev_seeds] = (
+                    steps[done_mask].cpu().numpy()
+                )
+                tick_lengts[completed_levels_prev_seeds] = (
+                    ticks[done_mask].cpu().numpy()
+                )
+                successes[completed_levels_prev_seeds] = (
+                    success[done_mask].cpu().numpy()
+                )
                 checked_levels[completed_levels_prev_seeds] = True
 
                 ticks[done_mask] = 0
@@ -296,7 +309,9 @@ def eval(actor, device):
                 new_done = np.sum(done_mask).item()
                 pbar.update(new_done)
 
-                env_level_ids[envs_done:envs_done + new_done] = completed_levels_prev_seeds
+                env_level_ids[envs_done : envs_done + new_done] = (
+                    completed_levels_prev_seeds
+                )
 
                 envs_done += new_done
 
@@ -311,36 +326,44 @@ def eval(actor, device):
     np.savetxt("all_knowing_path_lengths.txt", path_lengts, fmt="%d")
     np.savetxt("all_knowing_tick_lengths.txt", tick_lengts, fmt="%d")
     np.savetxt("all_knowing_successes.txt", successes.astype(np.int32), fmt="%d")
-    np.savetxt("all_knowing_checked_levels.txt", checked_levels.astype(np.int32), fmt="%d")
+    np.savetxt(
+        "all_knowing_checked_levels.txt", checked_levels.astype(np.int32), fmt="%d"
+    )
 
 
-def load_impoola_ppo_checkpoint(checkpoint_path: str, device: torch.device, shape=(3, 64, 64),
-                                action_space=15) -> PPOAgent:
+def load_impoola_ppo_checkpoint(
+    checkpoint_path: str, device: torch.device, shape=(3, 64, 64), action_space=15
+) -> PPOAgent:
     print(f"Loading checkpoint from {checkpoint_path}")
     # Load checkpoint
     if not os.path.exists(checkpoint_path):
-        print(f"Checkpoint not found.")
+        print("Checkpoint not found.")
         sys.exit(1)
 
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     # convert args from dict to namespace
-    args_dict = checkpoint['args']
+    args_dict = checkpoint["args"]
     args = argparse.Namespace(**args_dict)
 
-    envs = make_procgen_env(args, rand_seed=SEED,
-                            normalize_reward=args.normalize_reward,
-                            full_distribution=False)
+    envs = make_procgen_env(
+        args,
+        rand_seed=SEED,
+        normalize_reward=args.normalize_reward,
+        full_distribution=False,
+    )
     print(args)
     agent = PPOAgent(
         encoder_type=args.encoder_type,
         envs=envs,
-        width_scale=args.scale, out_features=args.latent_space_dim, cnn_filters=args.cnn_filters,
+        width_scale=args.scale,
+        out_features=args.latent_space_dim,
+        cnn_filters=args.cnn_filters,
         activation=args.activation,
-        use_layer_init_normed=False
+        use_layer_init_normed=False,
     ).to(device)
 
     # Load weights exactly like train2.py does it
-    agent.load_state_dict(checkpoint['agent_state_dict'])
+    agent.load_state_dict(checkpoint["agent_state_dict"])
 
     print(f"Loaded IMPOOLA model from step {checkpoint.get('step', 'unknown')}")
 
@@ -354,18 +377,19 @@ if __name__ == "__main__":
 
     # Add the train2.py arguments by importing them
     sys.path.append(os.path.dirname(__file__))
-    import sit.data_augs
-    from sit.train2 import \
-        parser  # This gets the parser with all train2.py arguments
-    from sit.ucb_rl2_meta.model import Policy_Sit
+    from sit.train2 import parser  # This gets the parser with all train2.py arguments
 
     # Add test-specific arguments
-    parser.add_argument('--checkpoint', type=str, required=True, help='Path to checkpoint file')
+    parser.add_argument(
+        "--checkpoint", type=str, required=True, help="Path to checkpoint file"
+    )
 
     args = parser.parse_args()
 
     # Set device same as train2.py
-    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
+    device = torch.device(
+        "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"
+    )
 
     # Load the trained agent
     agent = load_impoola_ppo_checkpoint(args.checkpoint, device)

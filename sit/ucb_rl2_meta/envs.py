@@ -23,10 +23,10 @@ class TransposeImageProcgen(TransposeObs):
         obs_shape = self.observation_space.shape
         self.observation_space = Box(
             self.observation_space.low[0, 0, 0],
-            self.observation_space.high[0, 0, 0], [
-                obs_shape[2], obs_shape[1], obs_shape[0]
-            ],
-            dtype=self.observation_space.dtype)
+            self.observation_space.high[0, 0, 0],
+            [obs_shape[2], obs_shape[1], obs_shape[0]],
+            dtype=self.observation_space.dtype,
+        )
 
     def observation(self, ob):
         if ob.shape[0] == 1:
@@ -46,13 +46,14 @@ class VecPyTorchProcgen(VecEnvWrapper):
             self.observation_space.low[0, 0, 0],
             self.observation_space.high[0, 0, 0],
             [3, 64, 64],
-            dtype=self.observation_space.dtype)
+            dtype=self.observation_space.dtype,
+        )
 
     def reset(self):
         obs = self.venv.reset()
         if obs.shape[1] != 3:
             obs = obs.transpose(0, 3, 1, 2)
-        obs = torch.from_numpy(obs).float().to(self.device) / 255.
+        obs = torch.from_numpy(obs).float().to(self.device) / 255.0
         return obs
 
     def step_async(self, actions):
@@ -66,6 +67,6 @@ class VecPyTorchProcgen(VecEnvWrapper):
         obs, reward, done, info = self.venv.step_wait()
         if obs.shape[1] != 3:
             obs = obs.transpose(0, 3, 1, 2)
-        obs = torch.from_numpy(obs).float().to(self.device) / 255.
+        obs = torch.from_numpy(obs).float().to(self.device) / 255.0
         reward = torch.from_numpy(reward).unsqueeze(dim=1).float()
         return obs, reward, done, info
