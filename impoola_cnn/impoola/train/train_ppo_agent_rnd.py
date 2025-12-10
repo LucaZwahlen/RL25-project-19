@@ -59,7 +59,7 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
         # observations are already normalized according to your confirmation
         rnd = RNDModel(envs.single_observation_space.shape, args.rnd_output_size).to(device)
         rnd_optimizer = torch.optim.Adam(rnd.predictor.parameters(), lr=args.rnd_lr)
-        intrinsic_rms = RunningMeanStd(shape=(1,)) # for normalizing intrinsic rewards      
+        intrinsic_rms = RunningMeanStd(shape=(1,), device=device)  # for normalizing intrinsic rewards
     else:
         rnd = None
         rnd_optimizer = None
@@ -70,13 +70,11 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lrnow = frac * learning_rate
             optimizer.param_groups[0]["lr"].copy_(lrnow)
-                      
+
         for step in range(0, args.num_steps):
             global_step += args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
-
-           
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
@@ -105,11 +103,10 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
                     pred_feat = rnd.predictor(next_obs_nrm)
 
                 intrinsic_reward = (target_feat - pred_feat).pow(2).mean(dim=1)
-                # normalize the intrinsic reward 
+                # normalize the intrinsic reward
                 intrinsic_rms.update(intrinsic_reward)
                 intrinsic_reward_norm = intrinsic_rms.normalize(intrinsic_reward)
                 intrinsic_reward_norm = torch.clamp(intrinsic_reward_norm, -5, 5)
-
 
                 # rewards[step] shape is (num_envs,)
                 rewards[step] += args.rnd_coef * intrinsic_reward_norm.to(device)
@@ -254,11 +251,13 @@ def train_ppo_agent(args, logger: Logger, envs, agent, optimizer, device):
 
     return envs, agent, global_step, b_obs
 
-## helper class for normalization of rnd
+# helper class for normalization of rnd
+
+
 class RunningMeanStd:
-    def __init__(self, epsilon=1e-4, shape=()):
-        self.mean = torch.zeros(shape)
-        self.var = torch.ones(shape)
+    def __init__(self, epsilon=1e-4, shape=(), device='cpu'):
+        self.mean = torch.zeros(shape, device=device)
+        self.var = torch.ones(shape, device=device)
         self.count = epsilon
 
     def update(self, x: torch.Tensor):
