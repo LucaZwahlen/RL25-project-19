@@ -14,7 +14,7 @@ from impoola_cnn.impoola.utils.evaluate_test_performance import (
 
 
 def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
-    """Train the GRPO agent (FIXED)"""
+    
 
     # Track training episode statistics
     episodeQueueCalculator = EpisodeQueueCalculator(
@@ -150,7 +150,6 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
         total_entropy_loss = 0
         n_updates = 0
 
-        # --- GRPO BATCHING LOGIC FIX ---
         # We define a "Group" as all envs at a specific timestep.
         # This ensures we compare agents that are in statistically similar states.
         group_size = args.num_envs
@@ -212,7 +211,7 @@ def train_grpo_agent(args, logger: Logger, envs, agent, optimizer, device):
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
 
-        # ... (Rest of evaluation code remains unchanged) ...
+
         eval_interval = (
             max(1, args.num_iterations // args.n_datapoints_csv)
             if args.n_datapoints_csv

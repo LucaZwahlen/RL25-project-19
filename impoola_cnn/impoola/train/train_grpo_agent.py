@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 from tqdm import trange
 
-# Ensure these are imported from your project structure
 from impoola_cnn.impoola.utils.csv_logging import EpisodeQueueCalculator
 from impoola_cnn.impoola.utils.evaluate_test_performance import (
     evaluate_test_performance_grpo,
@@ -63,7 +62,6 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
         device,
     )
 
-    # --- 1. SETUP REFERENCE MODEL (CRITICAL FOR GRPO) ---
     # We need a frozen copy of the agent to calculate KL divergence
     ref_agent = copy.deepcopy(agent).to(device)
     ref_agent.eval()
@@ -101,7 +99,7 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
         ):
             ref_agent.load_state_dict(agent.state_dict())
 
-        # ---------------- ROLLOUT ----------------
+ 
         for t in range(args.num_steps):
             obs_buf[t] = next_obs
             global_step += args.num_envs
@@ -131,7 +129,7 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
             if "_episode" in info.keys():
                 episodeQueueCalculator.extend(info)
 
-        # ---------------- CALCULATE RETURNS ----------------
+
         returns = torch.zeros_like(rew_buf)
         next_ret = torch.zeros(args.num_envs, device=device)
 
@@ -139,7 +137,7 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
             next_ret = rew_buf[t] + args.gamma * next_ret * (1.0 - done_buf[t])
             returns[t] = next_ret
 
-        # ---------------- FLATTEN BATCH ----------------
+
         B_obs = obs_buf.reshape((-1,) + envs.single_observation_space.shape)
         B_act = act_buf.reshape(-1)
         B_ret = returns.reshape(-1)
@@ -147,13 +145,13 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
 
         batch_size = B_obs.shape[0]
 
-        # ---------------- ADVANTAGE (GROUP-RELATIVE) ----------------
+
         advantages = compute_group_relative_advantages(
             B_ret,
             group_size=args.num_envs,
         )
 
-        # ---------------- UPDATE θ ----------------
+
         total_policy_loss = 0.0
         total_entropy = 0.0
         total_kl = 0.0
@@ -174,13 +172,9 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
             logp = pi.log_prob(mb_act)
             entropy = pi.entropy()
 
-            # --- KL DIVERGENCE (Approx) ---
-            # KL(pi || ref) = log(pi) - log(ref) (sampled approximation)
-            # We want to punish divergence from reference
-            # http://joschu.net/blog/kl-approx.html
+
             with torch.no_grad():
-                # simple approximation: logp - ref_logp
-                # Note: ref_logp is fixed from rollout, logp is differentiable
+
                 approx_kl = logp - mb_ref_logp
 
             # GRPO Loss:
@@ -211,7 +205,6 @@ def train_grpo_agent(args, logger, envs, agent, optimizer, device):
         avg_entropy_loss = total_entropy / num_updates  # logged as positive usually
         avg_kl = total_kl / num_updates
 
-        # ---------------- LOGGING ----------------
         eval_interval = max(1, args.num_iterations // args.n_datapoints_csv)
         if iteration % eval_interval == 0 or iteration == args.num_iterations:
             iteration_end_time = time.time()
